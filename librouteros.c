@@ -38,17 +38,19 @@ int debug = 0;
 */
 
 
-struct ros_result *ros_send_command(char *command, ...);
-struct ros_result *ros_read_packet();
+struct ros_result *ros_send_command(int socket, char *command, ...);
+struct ros_result *ros_read_packet(int socket);
 void ros_free_result(struct ros_result *result);
 char *ros_get(struct ros_result *result, char *key);
-int ros_login(char *username, char *password);
+int ros_login(int socket, char *username, char *password);
 
 struct ros_result {
 	int words;
 	char **word;
 	char done;
 	char re;
+	char trap;
+	char fatal;
 };
 
 int main(int argc, char **argv) {
@@ -66,18 +68,18 @@ int main(int argc, char **argv) {
 		return errno;
 	}
 
-	if (ros_login("user", "password")) {
+	if (ros_login(sock, "user", "password")) {
 		struct ros_result *res;
 
 		printf("Interfaces:\n");
 
-		res = ros_send_command("/interface/getall", ".tag=kake", NULL);
+		res = ros_send_command(sock, "/interface/getall", ".tag=kake", NULL);
 		while (res && res->re) {
 
 			printf("  %20s  %20s\n", ros_get(res, "=name"), ros_get(res, "=type"));			
 
 			ros_free_result(res);
-			res = ros_read_packet();
+			res = ros_read_packet(sock);
 		}
 		ros_free_result(res);
 	}
@@ -218,7 +220,7 @@ char *ros_get(struct ros_result *result, char *key) {
 	return NULL;
 }
 
-struct ros_result *ros_read_packet() {
+struct ros_result *ros_read_packet(int socket) {
 	struct ros_result *ret = malloc(sizeof(struct ros_result));
 	int len;
 
@@ -230,15 +232,17 @@ struct ros_result *ros_read_packet() {
 	memset(ret, 0, sizeof(ret));
 	ret->done = 0;
 	ret->re = 0;
+	ret->trap = 0;
+	ret->fatal = 0;
 	do {
 		char *buffer;
-		len = readLen(sock);
+		len = readLen(socket);
 		buffer = malloc(sizeof(char) * len);
 		if (buffer == NULL) {
 			fprintf(stderr, "Could not allocate memory.");
 			exit(1);
 		}
-		read(sock, buffer, len);
+		read(socket, buffer, len);
 
 		if (len > 0) {
 			ret->words++;
@@ -270,6 +274,12 @@ struct ros_result *ros_read_packet() {
 		if (strcmp(ret->word[0], "!re") == 0) {
 			ret->re = 1;
 		}
+		if (strcmp(ret->word[0], "!trap") == 0) {
+			ret->trap = 1;
+		}
+		if (strcmp(ret->word[0], "!fatal") == 0) {
+			ret->fatal = 1;
+		}
 	}
 	if (debug) {
 		int i;
@@ -281,7 +291,7 @@ struct ros_result *ros_read_packet() {
 	return ret;
 }
 
-struct ros_result *ros_send_command(char *command, ...) {
+struct ros_result *ros_send_command(int socket, char *command, ...) {
 	int i;
 	char *arg;
 
@@ -290,8 +300,8 @@ struct ros_result *ros_send_command(char *command, ...) {
 	arg = command;
 	while (arg != 0 && strlen(arg) != 0) {
 		int len = strlen(arg);
-		send_length(sock, len);
-		write(sock, arg, len);
+		send_length(socket, len);
+		write(socket, arg, len);
 		if (debug) {
 			printf("> %s\n", arg);
 		}
@@ -300,13 +310,13 @@ struct ros_result *ros_send_command(char *command, ...) {
 	va_end(ap);
 
 	/* Packet termination */
-	send_length(sock, 0);
+	send_length(socket, 0);
 
 	/* Read packet */
-	return ros_read_packet();
+	return ros_read_packet(socket);
 }
 
-int ros_login(char *username, char *password) {
+int ros_login(int socket, char *username, char *password) {
 	char buffer[1024];
 	char *userWord;
 	char passWord[45];
@@ -315,7 +325,7 @@ int ros_login(char *username, char *password) {
 	unsigned char md5sum[17];
 	md5_state_t state;
 
-	res = ros_send_command("/login", NULL);
+	res = ros_send_command(socket, "/login", NULL);
 
 	memset(buffer, 0, sizeof(buffer));
 
@@ -345,7 +355,7 @@ int ros_login(char *username, char *password) {
 	strcat(userWord, username);
 	userWord[6+strlen(username)] = 0;
 
-	res = ros_send_command("/login",
+	res = ros_send_command(socket, "/login",
 		userWord,
 		passWord,
 		NULL
