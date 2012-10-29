@@ -167,6 +167,22 @@ void ros_free_result(struct ros_result *result) {
 	free(result);
 }
 
+int strcmp2(char *a, char *b) {
+	int i = 0;
+	while (1) {
+		if (a[i] == 0) {
+			return 1;
+		}
+		if (b[i] == 0) {
+			return 0;
+		}
+		if (a[i] != b[i]) {
+			return 0;
+		}
+		i++;
+	}
+}
+
 char *ros_get(struct ros_result *result, char *key) {
 	int i,keylen;
 	char *search;
@@ -184,7 +200,7 @@ char *ros_get(struct ros_result *result, char *key) {
 	search[keylen+1] = '\0';
 
 	for (i = 0; i < result->words; ++i) {
-		if (strcmp(search, result->word[i]) == -1) {
+		if (strcmp2(search, result->word[i])) {
 			free(search);
 			return result->word[i] + keylen + 1;
 		}
