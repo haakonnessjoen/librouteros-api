@@ -134,6 +134,29 @@ static int bintomd5(char *dst, char *bin) {
 	return 1;
 }
 
+int ros_connect(char *address, int port) {
+	struct sockaddr_in s_address;
+
+	int sock = socket(AF_INET, SOCK_STREAM, 0);
+	if (sock <= 0) {
+		return sock;
+	}
+
+	s_address.sin_family = AF_INET;
+	s_address.sin_addr.s_addr = inet_addr(address);
+	s_address.sin_port = htons(port);
+
+	if (connect(sock, (struct sockaddr *)&s_address, sizeof(s_address)) == -1) {
+		return -1;
+	}
+
+	return sock;
+}
+
+int ros_disconnect(int sock) {
+	close(sock);
+}
+
 void ros_free_result(struct ros_result *result) {
 	int i;
 
@@ -192,9 +215,10 @@ struct ros_result *ros_read_packet(int socket) {
 			fprintf(stderr, "Could not allocate memory.");
 			exit(1);
 		}
-		read(socket, buffer, len);
 
 		if (len > 0) {
+			read(socket, buffer, len);
+
 			ret->words++;
 			if (ret->words == 1) {
 				ret->word = malloc(sizeof(char **));

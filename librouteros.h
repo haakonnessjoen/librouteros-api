@@ -17,12 +17,6 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-struct ros_result *ros_send_command(int socket, char *command, ...);
-struct ros_result *ros_read_packet(int socket);
-void ros_free_result(struct ros_result *result);
-char *ros_get(struct ros_result *result, char *key);
-int ros_login(int socket, char *username, char *password);
-
 struct ros_result {
 	int words;
 	char **word;
@@ -32,3 +26,12 @@ struct ros_result {
 	char fatal;
 };
 
+int ros_connect(char *address, int port);
+int ros_disconnect(int sock);
+struct ros_result *ros_send_command(int socket, char *command, ...);
+struct ros_result *ros_read_packet(int socket);
+void ros_free_result(struct ros_result *result);
+char *ros_get(struct ros_result *result, char *key);
+int ros_login(int socket, char *username, char *password);
+
+#define ROS_PORT 8728

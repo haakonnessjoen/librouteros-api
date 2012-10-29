@@ -23,6 +23,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <errno.h>
+#include <string.h>
 #include "librouteros.h"
 
 int sock;
@@ -33,19 +34,13 @@ int main(int argc, char **argv) {
 
 	if (argc < 4) {
 		fprintf(stderr, "Usage: %s <ip> <user> <password>\n", argv[0]);
-		exit(1);
+		return 1;
 	}
 
-	sock = socket(AF_INET, SOCK_STREAM, 0);
-
-	address.sin_family = AF_INET;
-	address.sin_addr.s_addr = inet_addr(argv[1]);
-	address.sin_port = htons(8728);
-	len = sizeof(address);
-
-	if (connect(sock, (struct sockaddr *)&address, len) == -1) {
-		fprintf(stderr, "Error connecting to %s.\n", argv[1]);
-		exit(1);
+	sock = ros_connect(argv[1], ROS_PORT); 
+	if (sock <= 0) {
+		fprintf(stderr, "Error connecting to %s: %s\n", argv[1], strerror(errno));
+		return 1;
 	}
 
 	if (ros_login(sock, argv[2], argv[3])) {
@@ -64,6 +59,6 @@ int main(int argc, char **argv) {
 		ros_free_result(res);
 	} else {
 		fprintf(stderr, "Error logging in\n");
-		exit(1);
+		return 1;
 	}
 }
