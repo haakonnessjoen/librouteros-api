@@ -13,30 +13,155 @@
 
 int sock;
 
+int debug = 0;
+
+/* TODO: asyncronous data. Use tags and callbacks to return correct
+	data, using local or external select/event loop
+*/
+
+
+struct ros_result *ros_send_command(char *command, ...);
+struct ros_result *ros_read_packet();
+void ros_free_result(struct ros_result *result);
+char *ros_get(struct ros_result *result, char *key);
+int ros_login(char *username, char *password);
+
 struct ros_result {
 	int words;
 	char **word;
 	char done;
+	char re;
 };
 
 int main(int argc, char **argv) {
 	struct sockaddr_in address;
-	int iLen;
+	int len;
 
 	sock = socket(AF_INET, SOCK_STREAM, 0);
 
 	address.sin_family = AF_INET;
-	address.sin_addr.s_addr = inet_addr("213.188.13.22"); //213.236.240.225");
+	address.sin_addr.s_addr = inet_addr("192.168.0.1");
 	address.sin_port = htons(8728);
-	iLen = sizeof(address);
+	len = sizeof(address);
 
-	if (connect(sock, (struct sockaddr *)&address, iLen) == -1) {
+	if (connect(sock, (struct sockaddr *)&address, len) == -1) {
 		return errno;
-	} else {
-		printf("Connected\n");
 	}
 
-	login(sock, "user", "pass");
+	if (ros_login("user", "password")) {
+		struct ros_result *res;
+
+		printf("Interfaces:\n");
+
+		res = ros_send_command("/interface/getall", ".tag=kake", NULL);
+		while (res && res->re) {
+
+			printf("  %20s  %20s\n", ros_get(res, "=name"), ros_get(res, "=type"));			
+
+			ros_free_result(res);
+			res = ros_read_packet();
+		}
+		ros_free_result(res);
+	}
+}
+
+static int send_length(int socket, int len) {
+	char data[4];
+
+	if (len < 0x80) {
+		data[0] = (char)len;
+		write(socket, data, 1);
+	}
+	else if (len < 0x4000) {
+
+		len = htons(len);
+		memcpy(data, &len, 2);
+		data[0] |= 0x80;
+
+		write (socket, data, 2);
+	}
+ 	else if (len < 0x200000)
+	{
+		len = htonl(len);
+		memcpy(data, &len, 3);
+		data[0] |= 0xc0;
+		write (socket, data, 3);
+	}
+	else if (len < 0x10000000)
+	{
+		len = htonl(len);
+		memcpy(data, &len, 4);
+		data[0] |= 0xe0;
+		write (socket, data, 4);
+	}
+	else  // this should never happen
+	{
+		printf("length of word is %d\n", len);
+		printf("word is too long.\n");
+		exit(1);
+	}
+}
+
+static int readLen(int socket)
+{
+	char data[4]; // first character read from socket
+	int len;       // calculated length of next message (Cast to int)
+
+	memset(data, 0, 4);
+	read(socket, data, 1);
+
+	if ((data[0] & 0xE0) == 0xE0) {
+		read(socket, data + 1, 3);
+		printf("Giant packet: %d\n", *((int *)data));
+		return *((int *)data);	
+	}
+	else if ((data[0] & 0xC0) == 0XC0) {
+		data[0] &= 0x3f;        // mask out the 1st 2 bits
+		read(socket, data + 1, 2);
+		printf("Lesser small packet: %d\n", *((int *)data));
+		return *((int *)data);	
+	}
+	else if ((data[0] & 0x80) == 0x80) {
+		data[0] &= 0x7f;        // mask out the 1st bit
+		read(socket, data + 1, 1);
+		printf("Less small packet: %d\n", *((int *)data));
+		return *((int *)data);	
+	}
+	else {
+		return *((int *)data);
+	}
+	return 0;
+}
+
+static int md5toBin(char *dst, char *hex) {
+	int i;
+	char convert[3];
+	unsigned int data;
+
+	if (strlen(hex) != 32)
+		return 0;
+
+	convert[2] = 0;
+	for(i = 0; i < 32; i+=2) {
+		memcpy(convert, hex + i, 2);
+		sscanf(convert, "%x", &data);
+		dst[i/2] = data & 0xff;
+	}
+	dst[i] = 0;
+
+	return 1;
+}
+
+static int bintomd5(char *dst, char *bin) {
+	int i;
+	char convert[3];
+	unsigned int data;
+
+	for (i = 0; i < 16; ++i) {
+		sprintf(dst+(i<<1), "%02x", bin[i] & 0xFF);
+	}
+	dst[i<<1] = 0;
+	return 1;
 }
 
 void ros_free_result(struct ros_result *result) {
@@ -66,7 +191,6 @@ char *ros_get(struct ros_result *result, char *key) {
 	search[keylen+1] = '\0';
 
 	for (i = 0; i < result->words; ++i) {
-		printf("%s == %s = %d\n", search, result->word[i], strcmp(search, result->word[i]));
 		if (strcmp(search, result->word[i]) == -1) {
 			free(search);
 			return result->word[i] + keylen + 1;
@@ -76,33 +200,18 @@ char *ros_get(struct ros_result *result, char *key) {
 	return NULL;
 }
 
-struct ros_result *ros_send_command(char *command, ...) {
+struct ros_result *ros_read_packet() {
 	struct ros_result *ret = malloc(sizeof(struct ros_result));
-	int i;
-	char *arg;
+	int len;
 
 	if (ret == 0) {
 		fprintf(stderr, "Could not allocate memory.");
 		exit(1);
 	}
 
-	va_list ap;
-	va_start(ap, command);
-	arg = command;
-	while (arg != 0 && strlen(arg) != 0) {
-		int len = strlen(arg);
-		send_length(sock, len);
-		write(sock, arg, len);
-		arg = va_arg(ap, char *);
-	}
-	va_end(ap);
-
-	/* Packet termination */
-	send_length(sock, 0);
-
-	/* Read packet */
-	int len;
-	ret->words = 0;
+	memset(ret, 0, sizeof(ret));
+	ret->done = 0;
+	ret->re = 0;
 	do {
 		char *buffer;
 		len = readLen(sock);
@@ -140,88 +249,94 @@ struct ros_result *ros_send_command(char *command, ...) {
 		if (strcmp(ret->word[0], "!done") == 0) {
 			ret->done = 1;
 		}
+		if (strcmp(ret->word[0], "!re") == 0) {
+			ret->re = 1;
+		}
+	}
+	if (debug) {
+		int i;
+		for (i = 0; i < ret->words; ++i) {
+			printf("< %s\n", ret->word[i]);
+		}
 	}
 
 	return ret;
 }
 
-int send_length(int socket, int len) {
-	char data[4];
+struct ros_result *ros_send_command(char *command, ...) {
+	int i;
+	char *arg;
 
-	if (len < 0x80) {
-		data[0] = (char)len;
-		write(socket, data, 1);
+	va_list ap;
+	va_start(ap, command);
+	arg = command;
+	while (arg != 0 && strlen(arg) != 0) {
+		int len = strlen(arg);
+		send_length(sock, len);
+		write(sock, arg, len);
+		if (debug) {
+			printf("> %s\n", arg);
+		}
+		arg = va_arg(ap, char *);
 	}
-	else if (len < 0x4000) {
+	va_end(ap);
 
-		len = htons(len);
-		memcpy(data, &len, 2);
-		data[0] |= 0x80;
+	/* Packet termination */
+	send_length(sock, 0);
 
-		write (socket, data, 2);
-	}
- 	else if (len < 0x200000)
-	{
-		len = htonl(len);
-		memcpy(data, &len, 3);
-		data[0] |= 0xc0;
-		write (socket, data, 3);
-	}
-	else if (len < 0x10000000)
-	{
-		len = htonl(len);
-		memcpy(data, &len, 4);
-		data[0] |= 0xe0;
-		write (socket, data, 4);
-	}
-	else  // this should never happen
-	{
-		printf("length of word is %d\n", len);
-		printf("word is too long.\n");
+	/* Read packet */
+	return ros_read_packet();
+}
+
+int ros_login(char *username, char *password) {
+	char buffer[1024];
+	char *userWord;
+	char passWord[45];
+	char *challenge;
+	struct ros_result *res;
+	unsigned char md5sum[17];
+	md5_state_t state;
+
+	res = ros_send_command("/login", NULL);
+
+	memset(buffer, 0, sizeof(buffer));
+
+	challenge = ros_get(res, "=ret");
+	if (challenge == NULL) {
+		fprintf(stderr, "Error logging in. No challenge received\n");
 		exit(1);
 	}
-}
-
-int readLen(int socket)
-{
-	char data[4]; // first character read from socket
-	int len;       // calculated length of next message (Cast to int)
-
-	memset(data, 0, 4);
-	read(socket, data, 1);
-
-	if ((data[0] & 0xE0) == 0xE0) {
-		read(socket, data + 1, 3);
-		printf("Giant packet: %d\n", *((int *)data));
-		return *((int *)data);	
-	}
-	else if ((data[0] & 0xC0) == 0XC0) {
-		data[0] &= 0x3f;        // mask out the 1st 2 bits
-		read(socket, data + 1, 2);
-		printf("Lesser small packet: %d\n", *((int *)data));
-		return *((int *)data);	
-	}
-	else if ((data[0] & 0x80) == 0x80) {
-		data[0] &= 0x7f;        // mask out the 1st bit
-		read(socket, data + 1, 1);
-		printf("Less small packet: %d\n", *((int *)data));
-		return *((int *)data);	
-	}
-	else
-	{
-		printf("Small packet: %d\n", *((int *)data));
-		return *((int *)data);
-	}
-	return 0;
-}
-
-
-int login(int fdSock, char *username, char *password)
-{
-	char buffer[1024];
-	struct ros_result *res = ros_send_command("/login", NULL);
-	printf("Got %d words. First: %s\n", res->words, res->word[0]);
-	printf("Result: %s\n", ros_get(res, "=ret"));
+	md5toBin(buffer + 1, challenge);
+	
+	md5_init(&state);
+	md5_append(&state, buffer, 1);
+	md5_append(&state, password, strlen(password));
+	md5_append(&state, buffer + 1, 16);
+	md5_finish(&state, (md5_byte_t *)md5sum);
 	ros_free_result(res);
+
+	strcpy(buffer, "00");
+	bintomd5(buffer + 2, md5sum);
+
+	strcpy(passWord, "=response=");
+	strcat(passWord, buffer);
+	passWord[44] = '\0';
+
+	userWord = malloc(sizeof(char) * (6 + strlen(username) + 1));
+	strcpy(userWord, "=name=");
+	strcat(userWord, username);
+	userWord[6+strlen(username)] = 0;
+
+	res = ros_send_command("/login",
+		userWord,
+		passWord,
+		NULL
+	);
+
+	free(userWord);
+
+	// !done == successful login
+	return res->done;
 }
+
 
