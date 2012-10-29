@@ -17,7 +17,6 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 #include <stdio.h>
-#include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -28,62 +27,13 @@
 #include <errno.h>
 #include <stdarg.h>
 #include "md5.h"
+#include "librouteros.h"
 
-int sock;
-
-int debug = 0;
+static int debug = 0;
 
 /* TODO: asyncronous data. Use tags and callbacks to return correct
 	data, using local or external select/event loop
 */
-
-
-struct ros_result *ros_send_command(int socket, char *command, ...);
-struct ros_result *ros_read_packet(int socket);
-void ros_free_result(struct ros_result *result);
-char *ros_get(struct ros_result *result, char *key);
-int ros_login(int socket, char *username, char *password);
-
-struct ros_result {
-	int words;
-	char **word;
-	char done;
-	char re;
-	char trap;
-	char fatal;
-};
-
-int main(int argc, char **argv) {
-	struct sockaddr_in address;
-	int len;
-
-	sock = socket(AF_INET, SOCK_STREAM, 0);
-
-	address.sin_family = AF_INET;
-	address.sin_addr.s_addr = inet_addr("192.168.0.1");
-	address.sin_port = htons(8728);
-	len = sizeof(address);
-
-	if (connect(sock, (struct sockaddr *)&address, len) == -1) {
-		return errno;
-	}
-
-	if (ros_login(sock, "user", "password")) {
-		struct ros_result *res;
-
-		printf("Interfaces:\n");
-
-		res = ros_send_command(sock, "/interface/getall", ".tag=kake", NULL);
-		while (res && res->re) {
-
-			printf("  %20s  %20s\n", ros_get(res, "=name"), ros_get(res, "=type"));			
-
-			ros_free_result(res);
-			res = ros_read_packet(sock);
-		}
-		ros_free_result(res);
-	}
-}
 
 static int send_length(int socket, int len) {
 	char data[4];
