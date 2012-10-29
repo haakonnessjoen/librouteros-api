@@ -173,9 +173,6 @@ int strcmp2(char *a, char *b) {
 		if (a[i] == 0) {
 			return 1;
 		}
-		if (b[i] == 0) {
-			return 0;
-		}
 		if (a[i] != b[i]) {
 			return 0;
 		}
