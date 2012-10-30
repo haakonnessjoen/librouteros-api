@@ -48,17 +48,22 @@ int main(int argc, char **argv) {
 
 		printf("Interfaces:\n");
 
-		res = ros_send_command(sock, "/interface/getall", ".tag=kake", NULL);
+		res = ros_send_command(sock, "/interface/print", "=stats", ".tag=kake", NULL);
 		while (res && res->re) {
 
-			printf("  %20s  %20s\n", ros_get(res, "=name"), ros_get(res, "=type"));			
+			printf("  %20s  %20s  %20s  %20s\n", ros_get(res, "=name"), ros_get(res, "=type"), ros_get(res, "=rx-byte"), ros_get(res, "=tx-byte"));			
 
 			ros_free_result(res);
 			res = ros_read_packet(sock);
+			break;
 		}
 		ros_free_result(res);
+
+		ros_disconnect(sock);
 	} else {
 		fprintf(stderr, "Error logging in\n");
 		return 1;
 	}
+
+	return 0;
 }
