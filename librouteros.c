@@ -308,6 +308,7 @@ struct ros_result *ros_send_command(int socket, char *command, ...) {
 }
 
 int ros_login(int socket, char *username, char *password) {
+	int result;
 	char buffer[1024];
 	char *userWord;
 	char passWord[45];
@@ -355,7 +356,10 @@ int ros_login(int socket, char *username, char *password) {
 	free(userWord);
 
 	// !done == successful login
-	return res->done;
+	result = res->done;
+	ros_free_result(res);
+
+	return result;
 }
 
 
