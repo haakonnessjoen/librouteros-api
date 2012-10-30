@@ -55,7 +55,6 @@ int main(int argc, char **argv) {
 
 			ros_free_result(res);
 			res = ros_read_packet(sock);
-			break;
 		}
 		ros_free_result(res);
 
