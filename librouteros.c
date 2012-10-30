@@ -180,6 +180,10 @@ int strcmp2(char *a, char *b) {
 	}
 }
 
+char *ros_get_tag(struct ros_result *result) {
+	return ros_get(result, ".tag");
+}
+
 char *ros_get(struct ros_result *result, char *key) {
 	int i,keylen;
 	char *search;

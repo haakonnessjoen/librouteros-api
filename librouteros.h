@@ -33,5 +33,6 @@ struct ros_result *ros_read_packet(int socket);
 void ros_free_result(struct ros_result *result);
 char *ros_get(struct ros_result *result, char *key);
 int ros_login(int socket, char *username, char *password);
+char *ros_get_tag(struct ros_result *result);
 
 #define ROS_PORT 8728
