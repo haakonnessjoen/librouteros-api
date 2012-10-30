@@ -52,7 +52,7 @@ If the result is only one row; result->done will be 1. If it is a list, result->
 
 Problems are reported with ->trap or ->fatal to 1.
 
-*NOTE* The last argument MUST be NULL.
+**NOTE** The last argument MUST be NULL.
 
 ## struct ros_result *ros_read_packet(int socket);
 
