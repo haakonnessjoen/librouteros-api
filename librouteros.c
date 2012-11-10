@@ -35,12 +35,12 @@ static int debug = 0;
 	data, using local or external select/event loop
 */
 
-static int send_length(int socket, int len) {
+static int send_length(struct ros_connection *conn, int len) {
 	char data[4];
 
 	if (len < 0x80) {
 		data[0] = (char)len;
-		write(socket, data, 1);
+		write(conn->socket, data, 1);
 	}
 	else if (len < 0x4000) {
 
@@ -48,21 +48,21 @@ static int send_length(int socket, int len) {
 		memcpy(data, &len, 2);
 		data[0] |= 0x80;
 
-		write (socket, data, 2);
+		write (conn->socket, data, 2);
 	}
  	else if (len < 0x200000)
 	{
 		len = htonl(len);
 		memcpy(data, &len, 3);
 		data[0] |= 0xc0;
-		write (socket, data, 3);
+		write (conn->socket, data, 3);
 	}
 	else if (len < 0x10000000)
 	{
 		len = htonl(len);
 		memcpy(data, &len, 4);
 		data[0] |= 0xe0;
-		write (socket, data, 4);
+		write (conn->socket, data, 4);
 	}
 	else  // this should never happen
 	{
@@ -72,28 +72,28 @@ static int send_length(int socket, int len) {
 	}
 }
 
-static int readLen(int socket)
+static int readLen(struct ros_connection *conn)
 {
 	char data[4]; // first character read from socket
 	int len;       // calculated length of next message (Cast to int)
 
 	memset(data, 0, 4);
-	read(socket, data, 1);
+	read(conn->socket, data, 1);
 
 	if ((data[0] & 0xE0) == 0xE0) {
-		read(socket, data + 1, 3);
+		read(conn->socket, data + 1, 3);
 		printf("Giant packet: %d\n", *((int *)data));
 		return *((int *)data);	
 	}
 	else if ((data[0] & 0xC0) == 0XC0) {
 		data[0] &= 0x3f;        // mask out the 1st 2 bits
-		read(socket, data + 1, 2);
+		read(conn->socket, data + 1, 2);
 		printf("Lesser small packet: %d\n", *((int *)data));
 		return *((int *)data);	
 	}
 	else if ((data[0] & 0x80) == 0x80) {
 		data[0] &= 0x7f;        // mask out the 1st bit
-		read(socket, data + 1, 1);
+		read(conn->socket, data + 1, 1);
 		printf("Less small packet: %d\n", *((int *)data));
 		return *((int *)data);	
 	}
@@ -134,27 +134,41 @@ static int bintomd5(char *dst, char *bin) {
 	return 1;
 }
 
-int ros_connect(char *address, int port) {
-	struct sockaddr_in s_address;
+void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result)) {
+	if (conn->expected_length == 0) {
+		conn->expected_length = readLen(conn);
+	} else {
+		
+	}
+}
 
-	int sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (sock <= 0) {
-		return sock;
+struct ros_connection *ros_connect(char *address, int port) {
+	struct sockaddr_in s_address;
+	struct ros_connection *conn = malloc(sizeof(struct ros_connection));
+
+	if (conn == NULL) {
+		fprintf(stderr, "Error allocating memory\n");
+		exit(1);
+	}
+
+	conn->socket = socket(AF_INET, SOCK_STREAM, 0);
+	if (conn->socket <= 0) {
+		return NULL;
 	}
 
 	s_address.sin_family = AF_INET;
 	s_address.sin_addr.s_addr = inet_addr(address);
 	s_address.sin_port = htons(port);
 
-	if (connect(sock, (struct sockaddr *)&s_address, sizeof(s_address)) == -1) {
-		return -1;
+	if (connect(conn->socket, (struct sockaddr *)&s_address, sizeof(s_address)) == -1) {
+		return NULL;
 	}
 
-	return sock;
+	return conn;
 }
 
-int ros_disconnect(int sock) {
-	close(sock);
+int ros_disconnect(struct ros_connection *conn) {
+	close(conn->socket);
 }
 
 void ros_free_result(struct ros_result *result) {
@@ -210,7 +224,7 @@ char *ros_get(struct ros_result *result, char *key) {
 	return NULL;
 }
 
-struct ros_result *ros_read_packet(int socket) {
+struct ros_result *ros_read_packet(struct ros_connection *conn) {
 	struct ros_result *ret = malloc(sizeof(struct ros_result));
 	int len;
 
@@ -226,7 +240,7 @@ struct ros_result *ros_read_packet(int socket) {
 	ret->fatal = 0;
 	do {
 		char *buffer;
-		len = readLen(socket);
+		len = readLen(conn);
 		buffer = malloc(sizeof(char) * len);
 		if (buffer == NULL) {
 			fprintf(stderr, "Could not allocate memory.");
@@ -234,7 +248,7 @@ struct ros_result *ros_read_packet(int socket) {
 		}
 
 		if (len > 0) {
-			read(socket, buffer, len);
+			read(conn->socket, buffer, len);
 
 			ret->words++;
 			if (ret->words == 1) {
@@ -282,7 +296,7 @@ struct ros_result *ros_read_packet(int socket) {
 	return ret;
 }
 
-struct ros_result *ros_send_command(int socket, char *command, ...) {
+struct ros_result *ros_send_command(struct ros_connection *conn, char *command, ...) {
 	int i;
 	char *arg;
 
@@ -291,8 +305,8 @@ struct ros_result *ros_send_command(int socket, char *command, ...) {
 	arg = command;
 	while (arg != 0 && strlen(arg) != 0) {
 		int len = strlen(arg);
-		send_length(socket, len);
-		write(socket, arg, len);
+		send_length(conn, len);
+		write(conn->socket, arg, len);
 		if (debug) {
 			printf("> %s\n", arg);
 		}
@@ -301,13 +315,13 @@ struct ros_result *ros_send_command(int socket, char *command, ...) {
 	va_end(ap);
 
 	/* Packet termination */
-	send_length(socket, 0);
+	send_length(conn, 0);
 
 	/* Read packet */
-	return ros_read_packet(socket);
+	return ros_read_packet(conn);
 }
 
-int ros_login(int socket, char *username, char *password) {
+int ros_login(struct ros_connection *conn, char *username, char *password) {
 	int result;
 	char buffer[1024];
 	char *userWord;
@@ -317,7 +331,7 @@ int ros_login(int socket, char *username, char *password) {
 	unsigned char md5sum[17];
 	md5_state_t state;
 
-	res = ros_send_command(socket, "/login", NULL);
+	res = ros_send_command(conn, "/login", NULL);
 
 	memset(buffer, 0, sizeof(buffer));
 
@@ -347,7 +361,7 @@ int ros_login(int socket, char *username, char *password) {
 	strcat(userWord, username);
 	userWord[6+strlen(username)] = 0;
 
-	res = ros_send_command(socket, "/login",
+	res = ros_send_command(conn, "/login",
 		userWord,
 		passWord,
 		NULL

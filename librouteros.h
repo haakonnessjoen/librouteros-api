@@ -26,13 +26,20 @@ struct ros_result {
 	char fatal;
 };
 
-int ros_connect(char *address, int port);
-int ros_disconnect(int sock);
-struct ros_result *ros_send_command(int socket, char *command, ...);
-struct ros_result *ros_read_packet(int socket);
+struct ros_connection {
+	int socket;
+	unsigned char *buffer;
+	int expected_length;
+	int length;
+};
+
+struct ros_connection *ros_connect(char *address, int port);
+int ros_disconnect(struct ros_connection *conn);
+struct ros_result *ros_send_command(struct ros_connection *conn, char *command, ...);
+struct ros_result *ros_read_packet(struct ros_connection *conn);
 void ros_free_result(struct ros_result *result);
 char *ros_get(struct ros_result *result, char *key);
-int ros_login(int socket, char *username, char *password);
+int ros_login(struct ros_connection *conn, char *username, char *password);
 char *ros_get_tag(struct ros_result *result);
 
 #define ROS_PORT 8728

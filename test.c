@@ -26,7 +26,7 @@
 #include <string.h>
 #include "librouteros.h"
 
-int sock;
+struct ros_connection *conn;
 
 int main(int argc, char **argv) {
 	struct sockaddr_in address;
@@ -37,28 +37,28 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 
-	sock = ros_connect(argv[1], ROS_PORT); 
-	if (sock <= 0) {
+	conn = ros_connect(argv[1], ROS_PORT); 
+	if (conn == NULL) {
 		fprintf(stderr, "Error connecting to %s: %s\n", argv[1], strerror(errno));
 		return 1;
 	}
 
-	if (ros_login(sock, argv[2], argv[3])) {
+	if (ros_login(conn, argv[2], argv[3])) {
 		struct ros_result *res;
 
 		printf("Interfaces:\n");
 
-		res = ros_send_command(sock, "/interface/print", "=stats", ".tag=kake", NULL);
+		res = ros_send_command(conn, "/interface/print", "=stats", ".tag=kake", NULL);
 		while (res && res->re) {
 
 			printf("  %20s  %20s  %20s  %20s\n", ros_get(res, "=name"), ros_get(res, "=type"), ros_get(res, "=rx-byte"), ros_get(res, "=tx-byte"));			
 
 			ros_free_result(res);
-			res = ros_read_packet(sock);
+			res = ros_read_packet(conn);
 		}
 		ros_free_result(res);
 
-		ros_disconnect(sock);
+		ros_disconnect(conn);
 	} else {
 		fprintf(stderr, "Error logging in\n");
 		return 1;
