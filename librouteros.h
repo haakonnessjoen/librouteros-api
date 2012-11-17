@@ -27,12 +27,22 @@ struct ros_result {
 };
 
 struct ros_connection {
+	enum {
+		ROS_SIMPLE,
+		ROS_EVENT
+	} type;
 	int socket;
 	unsigned char *buffer;
+	struct ros_result *event_result;
 	int expected_length;
 	int length;
 };
 
+/*FIXME*/
+struct ros_result *ros_send_command_event(struct ros_connection *conn, char *command, ...);
+void ros_set_type(struct ros_connection *conn, int type);
+
+void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result));
 struct ros_connection *ros_connect(char *address, int port);
 int ros_disconnect(struct ros_connection *conn);
 struct ros_result *ros_send_command(struct ros_connection *conn, char *command, ...);

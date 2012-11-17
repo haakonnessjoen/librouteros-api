@@ -1,4 +1,4 @@
-all:	test librouteros.so
+all:	test test2 librouteros.so
 
 librouteros.o: librouteros.c librouteros.h
 	gcc -g -fPIC -c -o librouteros.o librouteros.c
@@ -11,6 +11,9 @@ librouteros.so: librouteros.o md5.o
 
 test: test.c md5.o librouteros.o
 	cc -g -o test test.c librouteros.o md5.o
+
+test2: test2.c md5.o librouteros.o
+	cc -g -o test2 test2.c librouteros.o md5.o
 
 install: librouteros.so
 	cp librouteros.so /usr/lib/

@@ -1,0 +1,81 @@
+/*
+    librouteros-api - Connect to RouterOS devices using official API protocol
+    Copyright (C) 2012, Håkon Nessjøen <haakon.nessjoen@gmail.com>
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License along
+    with this program; if not, write to the Free Software Foundation, Inc.,
+    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <string.h>
+#include <unistd.h>
+#include "librouteros.h"
+
+struct ros_connection *conn;
+volatile int do_continue = 0;
+
+void handleData(struct ros_result *result) {
+	if (result->re > 0)
+		do_continue = 1;
+	else
+		do_continue = 0;
+		
+	if (!result->done)
+		printf("  %20s  %20s  %20s  %20s\n", ros_get(result, "=name"), ros_get(result, "=type"), ros_get(result, "=rx-byte"), ros_get(result, "=tx-byte"));			
+
+	ros_free_result(result);
+}
+
+int main(int argc, char **argv) {
+	struct sockaddr_in address;
+	int len;
+
+	if (argc < 4) {
+		fprintf(stderr, "Usage: %s <ip> <user> <password>\n", argv[0]);
+		return 1;
+	}
+
+	conn = ros_connect(argv[1], ROS_PORT); 
+	if (conn == NULL) {
+		fprintf(stderr, "Error connecting to %s: %s\n", argv[1], strerror(errno));
+		return 1;
+	}
+	
+	ros_set_type(conn, ROS_EVENT);
+
+	if (ros_login(conn, argv[2], argv[3])) {
+		struct ros_result *res;
+
+		printf("Interfaces:\n");
+
+		res = ros_send_command_event(conn, "/interface/print", "=stats", ".tag=kake", NULL);
+		do_continue = 1;
+		while (do_continue) {
+			runloop_once(conn, handleData);
+			usleep(500);
+		}
+
+		ros_disconnect(conn);
+	} else {
+		fprintf(stderr, "Error logging in\n");
+		return 1;
+	}
+
+	return 0;
+}

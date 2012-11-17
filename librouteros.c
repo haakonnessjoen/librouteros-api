@@ -26,6 +26,8 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <sys/uio.h>
+#include <fcntl.h>
 #include "md5.h"
 #include "librouteros.h"
 
@@ -134,11 +136,112 @@ static int bintomd5(char *dst, char *bin) {
 	return 1;
 }
 
+void ros_set_type(struct ros_connection *conn, int type) {
+	int blocking = 0;
+
+	conn->type = type;
+
+	if (type == ROS_EVENT) {
+		blocking = 1;
+	}
+	
+	int flags = fcntl(conn->socket, F_GETFL, 0);
+	if (flags < 0) {
+		fprintf(stderr, "Error getting socket flags\n");
+		exit(1);
+	}
+	
+	flags = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
+
+	if (fcntl(conn->socket, F_SETFL, flags) != 0) {
+		fprintf(stderr, "Could not set socket to NONBLOCKING\n");
+		exit(1);
+	}
+}
+
 void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result)) {
+	/* Make sure the connection/instance is event based */
+	if (conn->type != ROS_EVENT) {
+		fprintf(stderr, "Warning! Connection type was not set to ROS_EVENT. Forcing change.\n");
+		ros_set_type(conn, ROS_EVENT);
+	}
+
 	if (conn->expected_length == 0) {
 		conn->expected_length = readLen(conn);
+		if (conn->expected_length > 0) {
+			conn->length = 0;
+			conn->buffer = malloc(conn->expected_length);
+
+			if (conn->buffer == NULL) {
+				fprintf(stderr, "Could not allocate memory for packet\n");
+				exit(1);
+			}
+
+			/* Check for more data at once */
+			runloop_once(conn, callback);
+		} else {
+			// Sentence done
+			// call callback
+			if (conn->event_result->words > 0) {
+				if (strcmp(conn->event_result->word[0], "!done") == 0) {
+					conn->event_result->done = 1;
+				}
+				if (strcmp(conn->event_result->word[0], "!re") == 0) {
+					conn->event_result->re = 1;
+				}
+				if (strcmp(conn->event_result->word[0], "!trap") == 0) {
+					conn->event_result->trap = 1;
+				}
+				if (strcmp(conn->event_result->word[0], "!fatal") == 0) {
+					conn->event_result->fatal = 1;
+				}
+			}
+			callback(conn->event_result);
+			conn->event_result = NULL;
+		}
 	} else {
-		
+		int to_read = conn->expected_length - conn->length;
+		int got = read(conn->socket, conn->buffer + conn->length, to_read);
+			if (got == to_read) {
+			struct ros_result *res;
+			if (conn->event_result == NULL) {
+				conn->event_result = malloc(sizeof(struct ros_result));
+				if (conn->event_result == NULL) {
+					fprintf(stderr, "Error allocating memory for event result\n");
+					exit(1);
+				}
+				memset(conn->event_result, 0, sizeof(conn->event_result));
+				conn->event_result->done = 0;
+				conn->event_result->re = 0;
+				conn->event_result->trap = 0;
+				conn->event_result->fatal = 0;
+			}
+			res = conn->event_result;
+			
+			res->words++;
+			if (res->words == 1) {
+				res->word = malloc(sizeof(char **));
+			} else {
+				res->word = realloc(res->word, sizeof(char **) * res->words);
+			}
+			if (res->word == NULL) {
+				fprintf(stderr, "Could not allocate memory.\n");
+				exit(1);
+			}
+			
+			res->word[res->words-1] = malloc(sizeof(char) * (conn->expected_length + 1));
+			if (res->word[res->words-1] == NULL) {
+				fprintf(stderr, "Could not allocate memory.\n");
+				exit(1);
+			}
+			memcpy(res->word[res->words-1], conn->buffer, conn->expected_length);
+			res->word[res->words-1][conn->expected_length] = '\0';
+			
+			free(conn->buffer);
+			conn->buffer = NULL;
+			conn->expected_length = 0;
+			conn->length = 0;
+		}
 	}
 }
 
@@ -294,6 +397,28 @@ struct ros_result *ros_read_packet(struct ros_connection *conn) {
 	}
 
 	return ret;
+}
+
+struct ros_result *ros_send_command_event(struct ros_connection *conn, char *command, ...) {
+	int i;
+	char *arg;
+
+	va_list ap;
+	va_start(ap, command);
+	arg = command;
+	while (arg != 0 && strlen(arg) != 0) {
+		int len = strlen(arg);
+		send_length(conn, len);
+		write(conn->socket, arg, len);
+		if (debug) {
+			printf("> %s\n", arg);
+		}
+		arg = va_arg(ap, char *);
+	}
+	va_end(ap);
+
+	/* Packet termination */
+	send_length(conn, 0);
 }
 
 struct ros_result *ros_send_command(struct ros_connection *conn, char *command, ...) {
