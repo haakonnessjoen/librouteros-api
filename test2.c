@@ -44,6 +44,7 @@ void handleData(struct ros_result *result) {
 
 int main(int argc, char **argv) {
 	struct sockaddr_in address;
+	fd_set read_fds;
 	int len;
 
 	if (argc < 4) {
@@ -61,14 +62,31 @@ int main(int argc, char **argv) {
 
 	if (ros_login(conn, argv[2], argv[3])) {
 		struct ros_result *res;
+		struct timeval timeout;
 
 		printf("Interfaces:\n");
 
 		res = ros_send_command_event(conn, "/interface/print", "=stats", ".tag=kake", NULL);
+
 		do_continue = 1;
+		timeout.tv_sec = 1;
+		timeout.tv_usec = 0;
+
 		while (do_continue) {
-			runloop_once(conn, handleData);
-			usleep(500);
+			int reads;
+			FD_ZERO(&read_fds);
+			FD_SET(conn->socket, &read_fds);
+
+			reads = select(conn->socket + 1, &read_fds, NULL, NULL, &timeout);
+			if (reads > 0) {
+				if (FD_ISSET(conn->socket, &read_fds)) {
+					/* handle incoming data with specified callback */
+					runloop_once(conn, handleData);
+				}
+			} else {
+				/* Run every idle second */
+				printf("Idle..\n");
+			}
 		}
 
 		ros_disconnect(conn);

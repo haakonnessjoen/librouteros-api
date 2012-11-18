@@ -61,7 +61,19 @@ If the result was result->re you can use ros_read_packet() to get the next row. 
 ## char *ros_get(struct ros_result *result, char *key);
 
 Retrieve a parameter from the result. For example, if you want to get the name of the interface in a "/interface/print" command. You should call ros_get(result, "=name");
+The pointer returned by this function is invalid after ros_free_result().
 
 ## void ros_free_result(struct ros_result *result);
 
 You should always free a result after usage, or you will experience memory leak.
+
+# Event based usage
+
+## void ros_set_type(struct ros_connection *conn, int type);
+
+Use this to enter "event" mode. (nonblocking sockets) Usage: ros_set_type(conn, ROS_EVENT);
+
+## void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result));
+
+Use select/epoll/poll to check for data on conn->socket. When you know there is data present, run the runloop_once() command with a callback function to handle the result. The callback function should be defined as: void callbackname(struct ros_result *result);
+Look at test2.c for a select() example.	
