@@ -254,6 +254,10 @@ struct ros_connection *ros_connect(char *address, int port) {
 		exit(1);
 	}
 
+	conn->expected_length = 0;
+	conn->length = 0;
+	conn->event_result = NULL;
+
 	conn->socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (conn->socket <= 0) {
 		return NULL;
@@ -272,6 +276,7 @@ struct ros_connection *ros_connect(char *address, int port) {
 
 int ros_disconnect(struct ros_connection *conn) {
 	close(conn->socket);
+	free(conn);
 }
 
 void ros_free_result(struct ros_result *result) {
