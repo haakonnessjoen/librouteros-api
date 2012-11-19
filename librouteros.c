@@ -177,11 +177,12 @@ static void ros_handle_events(struct ros_connection *conn, struct ros_result *re
 		for (i = 0; i < conn->num_events; ++i) {
 			if (strcmp(key, conn->events[i]->tag) == 0) {
 				conn->events[i]->callback(result);
+				free(key);
 				return;
 			}
 		}
 		fprintf(stderr, "warning: unhandeled event with tag: %s\n", key);
-		free(result);
+		ros_free_result(result);
 		free(key);
 	}
 }

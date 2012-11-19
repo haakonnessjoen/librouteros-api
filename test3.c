@@ -96,6 +96,7 @@ int main(int argc, char **argv) {
 				}
 			} else {
 				/* Run every idle second */
+				ros_disconnect(conn);
 				return 0;
 			}
 		}
