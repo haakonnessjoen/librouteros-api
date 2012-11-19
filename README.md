@@ -5,7 +5,7 @@ This is my implementation of the RouterOS api protocol, described at http://wiki
 
 The other C implementations seemed either over complicated, or too simple.
 
-Still in alpha stage. I will add support for multiple connections (referenced by sockets), and event-loop support soon.
+Still in alpha stage.
 
 Example logs into router and lists interfaces available.
 
@@ -15,7 +15,7 @@ Example code:
 
 		printf("Interfaces:\n");
 
-		res = ros_send_command(sock, "/interface/print", "=stats", ".tag=kake", NULL);
+		res = ros_send_command_wait(sock, "/interface/print", "=stats", ".tag=kake", NULL);
 		while (res && res->re) {
 
 			printf("  %20s  %20s  %20s  %20s\n", ros_get(res, "=name"), ros_get(res, "=type"), ros_get(res, "=rx-byte"), ros_get(res, "=tx-byte"));
@@ -30,31 +30,33 @@ Example code:
 Library Documentation
 =====================
 
-## int ros_connect(char *address, int port);
+**NOTE** Library function names and parameters are subject to change. (still alpha stage)
+
+## struct ros_connection *ros_connect(char *address, int port);
 
 A wrapper around socket() and connect() functions. Returns socket file descriptor handle.
 Port is usually ROS_PORT (8729).
 
-## int ros_disconect(int socket)
+## int ros_disconect(struct ros_connection *connection)
 
 A wrapper around close(). Please use this, in case there will be any automatic cleanup in the future.
 
-## int ros_login(int socket, char *username, char *password);
+## int ros_login(struct ros_connection *connection, char *username, char *password);
 
-Before sending any commands, you should log in using ros_login(socket, "user", "password"). The function returns with a true value on success. False on failure.
+Before sending any commands, you should log in using ros_login(conn, "user", "password"). The function returns with a true value on success. False on failure.
 
-## struct ros_result *ros_send_command(int socket, char *command, ...)
+## struct ros_result *ros_send_command_wait(struct ros_connection *connection, char *command, ...)
 
-Send a RouterOS API "sentence". The first argument after the socket fd is the command. For example "/interface/print".
-You can have as many "words" as you like.
+Send a RouterOS API "sentence" and waits for a response. The first argument after the connection handle is the command. For example "/interface/print".
+You can have as many "words" (parameters) as you like.
 
 If the result is only one row; result->done will be 1. If it is a list, result->re will be 1 until the last row which will have result->done set to 1.
 
-Problems are reported with ->trap or ->fatal to 1.
+Server-side problems are reported with ->trap or ->fatal to 1. Problems sending the packet are reported with a NULL pointer.
 
-**NOTE** The last argument MUST be NULL.
+**NOTE** The last argument MUST always be NULL.
 
-## struct ros_result *ros_read_packet(int socket);
+## struct ros_result *ros_read_packet(struct ros_connection *connection);
 
 If the result was result->re you can use ros_read_packet() to get the next row. Use multiple times until result->done is 1.
 
@@ -68,6 +70,11 @@ The pointer returned by this function is invalid after ros_free_result().
 You should always free a result after usage, or you will experience memory leak.
 
 # Event based usage
+
+## int ros_send_command(struct ros_connection *conn, char *command, ...);
+
+Works exactly as ros_send_command_wait() except that it does not wait for an answer. You should alwas set a .tag= word if you are awaiting several answers.
+Returns 1 on success and 0 on failure.
 
 ## void ros_set_type(struct ros_connection *conn, int type);
 

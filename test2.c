@@ -61,12 +61,11 @@ int main(int argc, char **argv) {
 	ros_set_type(conn, ROS_EVENT);
 
 	if (ros_login(conn, argv[2], argv[3])) {
-		struct ros_result *res;
 		struct timeval timeout;
 
 		printf("Interfaces:\n");
 
-		res = ros_send_command_event(conn, "/interface/print", "=stats", ".tag=kake", NULL);
+		ros_send_command(conn, "/interface/print", "=stats", ".tag=kake", NULL);
 
 		do_continue = 1;
 		timeout.tv_sec = 1;

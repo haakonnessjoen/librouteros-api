@@ -39,10 +39,13 @@ static int debug = 0;
 
 static int send_length(struct ros_connection *conn, int len) {
 	char data[4];
+	int written;
+	int towrite;
 
 	if (len < 0x80) {
 		data[0] = (char)len;
-		write(conn->socket, data, 1);
+		written = write(conn->socket, data, 1);
+		towrite = 1;
 	}
 	else if (len < 0x4000) {
 
@@ -50,21 +53,24 @@ static int send_length(struct ros_connection *conn, int len) {
 		memcpy(data, &len, 2);
 		data[0] |= 0x80;
 
-		write (conn->socket, data, 2);
+		written = write(conn->socket, data, 2);
+		towrite = 2;
 	}
  	else if (len < 0x200000)
 	{
 		len = htonl(len);
 		memcpy(data, &len, 3);
 		data[0] |= 0xc0;
-		write (conn->socket, data, 3);
+		written = write (conn->socket, data, 3);
+		towrite = 3;
 	}
 	else if (len < 0x10000000)
 	{
 		len = htonl(len);
 		memcpy(data, &len, 4);
 		data[0] |= 0xe0;
-		write (conn->socket, data, 4);
+		written = write (conn->socket, data, 4);
+		towrite = 4;
 	}
 	else  // this should never happen
 	{
@@ -72,6 +78,7 @@ static int send_length(struct ros_connection *conn, int len) {
 		printf("word is too long.\n");
 		exit(1);
 	}
+	return written == towrite ? 1 : 0;
 }
 
 static int readLen(struct ros_connection *conn)
@@ -404,7 +411,7 @@ struct ros_result *ros_read_packet(struct ros_connection *conn) {
 	return ret;
 }
 
-struct ros_result *ros_send_command_event(struct ros_connection *conn, char *command, ...) {
+int ros_send_command(struct ros_connection *conn, char *command, ...) {
 	int i;
 	char *arg;
 
@@ -414,7 +421,9 @@ struct ros_result *ros_send_command_event(struct ros_connection *conn, char *com
 	while (arg != 0 && strlen(arg) != 0) {
 		int len = strlen(arg);
 		send_length(conn, len);
-		write(conn->socket, arg, len);
+		if (write(conn->socket, arg, len) != len) {
+			return 0;
+		}
 		if (debug) {
 			printf("> %s\n", arg);
 		}
@@ -423,10 +432,14 @@ struct ros_result *ros_send_command_event(struct ros_connection *conn, char *com
 	va_end(ap);
 
 	/* Packet termination */
-	send_length(conn, 0);
+	if (send_length(conn, 0) == 0) {
+	  return 0;
+	}
+
+	return 1;
 }
 
-struct ros_result *ros_send_command(struct ros_connection *conn, char *command, ...) {
+struct ros_result *ros_send_command_wait(struct ros_connection *conn, char *command, ...) {
 	int i;
 	char *arg;
 
@@ -436,7 +449,9 @@ struct ros_result *ros_send_command(struct ros_connection *conn, char *command, 
 	while (arg != 0 && strlen(arg) != 0) {
 		int len = strlen(arg);
 		send_length(conn, len);
-		write(conn->socket, arg, len);
+		if (write(conn->socket, arg, len) != len) {
+			return NULL;
+		}
 		if (debug) {
 			printf("> %s\n", arg);
 		}
@@ -445,12 +460,15 @@ struct ros_result *ros_send_command(struct ros_connection *conn, char *command, 
 	va_end(ap);
 
 	/* Packet termination */
-	send_length(conn, 0);
+	if (send_length(conn, 0) == 0) {
+	  return NULL;
+	}
 
 	/* Read packet */
 	return ros_read_packet(conn);
 }
 
+/* TODO: write with events */
 int ros_login(struct ros_connection *conn, char *username, char *password) {
 	int result;
 	char buffer[1024];
@@ -461,7 +479,7 @@ int ros_login(struct ros_connection *conn, char *username, char *password) {
 	unsigned char md5sum[17];
 	md5_state_t state;
 
-	res = ros_send_command(conn, "/login", NULL);
+	res = ros_send_command_wait(conn, "/login", NULL);
 
 	memset(buffer, 0, sizeof(buffer));
 
@@ -491,7 +509,7 @@ int ros_login(struct ros_connection *conn, char *username, char *password) {
 	strcat(userWord, username);
 	userWord[6+strlen(username)] = 0;
 
-	res = ros_send_command(conn, "/login",
+	res = ros_send_command_wait(conn, "/login",
 		userWord,
 		passWord,
 		NULL

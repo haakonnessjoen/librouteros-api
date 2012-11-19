@@ -38,18 +38,21 @@ struct ros_connection {
 	int length;
 };
 
-/*FIXME*/
-struct ros_result *ros_send_command_event(struct ros_connection *conn, char *command, ...);
+/* event based functions */
+int ros_send_command(struct ros_connection *conn, char *command, ...);
 void ros_set_type(struct ros_connection *conn, int type);
-
 void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result));
+
+/* blocking functions */
+struct ros_result *ros_send_command_wait(struct ros_connection *conn, char *command, ...);
+struct ros_result *ros_read_packet(struct ros_connection *conn);
+int ros_login(struct ros_connection *conn, char *username, char *password);
+
+/* common functions */
 struct ros_connection *ros_connect(char *address, int port);
 int ros_disconnect(struct ros_connection *conn);
-struct ros_result *ros_send_command(struct ros_connection *conn, char *command, ...);
-struct ros_result *ros_read_packet(struct ros_connection *conn);
 void ros_free_result(struct ros_result *result);
 char *ros_get(struct ros_result *result, char *key);
-int ros_login(struct ros_connection *conn, char *username, char *password);
 char *ros_get_tag(struct ros_result *result);
 
 #define ROS_PORT 8728
