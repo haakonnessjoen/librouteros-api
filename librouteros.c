@@ -166,6 +166,26 @@ void ros_set_type(struct ros_connection *conn, int type) {
 	}
 }
 
+static void ros_handle_events(struct ros_connection *conn, struct ros_result *result) {
+	if (conn->num_events > 0) {
+		int i;
+		char *key = strdup(ros_get_tag(result));
+		if (key == NULL) {
+			fprintf(stderr, "Cannot allocate memory\n");
+			exit(1);
+		}
+		for (i = 0; i < conn->num_events; ++i) {
+			if (strcmp(key, conn->events[i]->tag) == 0) {
+				conn->events[i]->callback(result);
+				return;
+			}
+		}
+		fprintf(stderr, "warning: unhandeled event with tag: %s\n", key);
+		free(result);
+		free(key);
+	}
+}
+
 void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result)) {
 	/* Make sure the connection/instance is event based */
 	if (conn->type != ROS_EVENT) {
@@ -203,7 +223,11 @@ void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_resul
 					conn->event_result->fatal = 1;
 				}
 			}
-			callback(conn->event_result);
+			if (callback != NULL) {
+				callback(conn->event_result);
+			} else {
+				ros_handle_events(conn, conn->event_result);
+			}
 			conn->event_result = NULL;
 		}
 	} else {
@@ -264,6 +288,8 @@ struct ros_connection *ros_connect(char *address, int port) {
 	conn->expected_length = 0;
 	conn->length = 0;
 	conn->event_result = NULL;
+	conn->events = NULL;
+	conn->num_events = 0;
 
 	conn->socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (conn->socket <= 0) {
@@ -283,6 +309,16 @@ struct ros_connection *ros_connect(char *address, int port) {
 
 int ros_disconnect(struct ros_connection *conn) {
 	close(conn->socket);
+
+	if (conn->num_events > 0) {
+		int i;
+		for (i = 0; i < conn->num_events; ++i) {
+			free(conn->events[i]);
+			conn->events[i] = NULL;
+		}
+		free(conn->events);
+		conn->events = NULL;
+	}
 	free(conn);
 }
 
@@ -411,16 +447,15 @@ struct ros_result *ros_read_packet(struct ros_connection *conn) {
 	return ret;
 }
 
-int ros_send_command(struct ros_connection *conn, char *command, ...) {
-	int i;
+static int ros_send_command_va(struct ros_connection *conn, char *extra, char *command, va_list ap) {
 	char *arg;
 
-	va_list ap;
-	va_start(ap, command);
 	arg = command;
 	while (arg != 0 && strlen(arg) != 0) {
 		int len = strlen(arg);
-		send_length(conn, len);
+		if (send_length(conn, len) == 0) {
+			return 0;
+		}
 		if (write(conn->socket, arg, len) != len) {
 			return 0;
 		}
@@ -429,7 +464,16 @@ int ros_send_command(struct ros_connection *conn, char *command, ...) {
 		}
 		arg = va_arg(ap, char *);
 	}
-	va_end(ap);
+	
+	if (extra != NULL) {
+		int len = strlen(extra);
+		if (len > 0 && send_length(conn, len) == 0) {
+			return 0;
+		}
+		if (write(conn->socket, extra, len) != len) {
+			return 0;
+		}
+	}
 
 	/* Packet termination */
 	if (send_length(conn, 0) == 0) {
@@ -439,31 +483,71 @@ int ros_send_command(struct ros_connection *conn, char *command, ...) {
 	return 1;
 }
 
+void ros_add_event(struct ros_connection *conn, struct ros_event *event) {
+	if (conn->events == NULL) {
+		conn->num_events = 1;
+		conn->events = malloc(sizeof(struct ros_event **));
+	} else {
+		conn->num_events++;
+		conn->events = realloc(conn->events, sizeof(struct ros_event *) * conn->num_events);
+	}
+	if (conn->events == NULL) {
+		fprintf(stderr, "Error allocating memory\n");
+		exit(1);
+	}
+	conn->events[conn->num_events-1] = malloc(sizeof(struct ros_event));
+	if (conn->events[conn->num_events-1] == NULL) {
+		fprintf(stderr, "Error allocating memory\n");
+	}
+	memcpy(conn->events[conn->num_events-1], event, sizeof(struct ros_event));
+}
+
+int ros_send_command_cb(struct ros_connection *conn, void (*callback)(struct ros_result *result), char *command, ...) {
+	int result;
+	struct ros_event *event = malloc(sizeof(struct ros_event));
+	char extra[120];
+
+	if (event == NULL) {
+		fprintf(stderr, "Error allocating memory\n");
+		exit(1);
+	}
+		
+	sprintf(event->tag, "%d", rand());
+	sprintf(extra, ".tag=%s", event->tag);
+	event->callback = callback;
+	
+	ros_add_event(conn, event);
+	free(event);
+	
+	va_list ap;
+	va_start(ap, command);
+	result = ros_send_command_va(conn, extra, command, ap);
+	va_end(ap);
+
+	return result;
+}
+
+int ros_send_command(struct ros_connection *conn, char *command, ...) {
+	int result;
+	va_list ap;
+	va_start(ap, command);
+	result = ros_send_command_va(conn, NULL, command, ap);
+	va_end(ap);
+	return result;
+}
+
 struct ros_result *ros_send_command_wait(struct ros_connection *conn, char *command, ...) {
-	int i;
+	int result;
 	char *arg;
 
 	va_list ap;
 	va_start(ap, command);
-	arg = command;
-	while (arg != 0 && strlen(arg) != 0) {
-		int len = strlen(arg);
-		send_length(conn, len);
-		if (write(conn->socket, arg, len) != len) {
-			return NULL;
-		}
-		if (debug) {
-			printf("> %s\n", arg);
-		}
-		arg = va_arg(ap, char *);
-	}
+	result = ros_send_command_va(conn, NULL, command, ap);
 	va_end(ap);
-
-	/* Packet termination */
-	if (send_length(conn, 0) == 0) {
-	  return NULL;
+	
+	if (result == 0) {
+		return NULL;
 	}
-
 	/* Read packet */
 	return ros_read_packet(conn);
 }

@@ -26,13 +26,21 @@ struct ros_result {
 	char fatal;
 };
 
+struct ros_event {
+	char tag[100];
+	void (*callback)(struct ros_result *result);
+};
+
 struct ros_connection {
 	enum {
 		ROS_SIMPLE,
 		ROS_EVENT
 	} type;
+	
 	int socket;
 	unsigned char *buffer;
+	struct ros_event **events;
+	int num_events;
 	struct ros_result *event_result;
 	int expected_length;
 	int length;
@@ -42,6 +50,7 @@ struct ros_connection {
 int ros_send_command(struct ros_connection *conn, char *command, ...);
 void ros_set_type(struct ros_connection *conn, int type);
 void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result));
+int ros_send_command_cb(struct ros_connection *conn, void (*callback)(struct ros_result *result), char *command, ...);
 
 /* blocking functions */
 struct ros_result *ros_send_command_wait(struct ros_connection *conn, char *command, ...);

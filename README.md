@@ -71,6 +71,10 @@ You should always free a result after usage, or you will experience memory leak.
 
 # Event based usage
 
+== Example
+
+Look at test3.c for a example of automatic event dispatching using .tags (tags are internally chosen by librouteros).
+
 ## int ros_send_command(struct ros_connection *conn, char *command, ...);
 
 Works exactly as ros_send_command_wait() except that it does not wait for an answer. You should alwas set a .tag= word if you are awaiting several answers.
