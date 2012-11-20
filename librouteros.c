@@ -171,10 +171,14 @@ static void ros_handle_events(struct ros_connection *conn, struct ros_result *re
 		int i;
 		char *key = ros_get_tag(result);
 		if (key == NULL) {
+			/* Event with no tag */
+			return;
+		}
+		key = strdup(key);
+		if (key == NULL) {
 			fprintf(stderr, "Cannot allocate memory\n");
 			exit(1);
 		}
-		key = strdup(key);
 		for (i = 0; i < conn->num_events; ++i) {
 			if (strcmp(key, conn->events[i]->tag) == 0) {
 				conn->events[i]->callback(result);
