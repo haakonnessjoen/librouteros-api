@@ -41,7 +41,7 @@ struct ros_connection {
 		ROS_SIMPLE,
 		ROS_EVENT
 	} type;
-	
+
 	int socket;
 	unsigned char *buffer;
 	struct ros_event **events;

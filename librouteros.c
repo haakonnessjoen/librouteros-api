@@ -92,19 +92,19 @@ static int readLen(struct ros_connection *conn)
 	if ((data[0] & 0xE0) == 0xE0) {
 		read(conn->socket, data + 1, 3);
 		printf("Giant packet: %d\n", *((int *)data));
-		return *((int *)data);	
+		return *((int *)data);
 	}
 	else if ((data[0] & 0xC0) == 0XC0) {
 		data[0] &= 0x3f;        // mask out the 1st 2 bits
 		read(conn->socket, data + 1, 2);
 		printf("Lesser small packet: %d\n", *((int *)data));
-		return *((int *)data);	
+		return *((int *)data);
 	}
 	else if ((data[0] & 0x80) == 0x80) {
 		data[0] &= 0x7f;        // mask out the 1st bit
 		read(conn->socket, data + 1, 1);
 		printf("Less small packet: %d\n", *((int *)data));
-		return *((int *)data);	
+		return *((int *)data);
 	}
 	else {
 		return *((int *)data);
@@ -151,13 +151,13 @@ void ros_set_type(struct ros_connection *conn, int type) {
 	if (type == ROS_EVENT) {
 		blocking = 1;
 	}
-	
+
 	int flags = fcntl(conn->socket, F_GETFL, 0);
 	if (flags < 0) {
 		fprintf(stderr, "Error getting socket flags\n");
 		exit(1);
 	}
-	
+
 	flags = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
 
 	if (fcntl(conn->socket, F_SETFL, flags) != 0) {
@@ -250,7 +250,7 @@ void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_resul
 				conn->event_result->fatal = 0;
 			}
 			res = conn->event_result;
-			
+
 			res->words++;
 			if (res->words == 1) {
 				res->word = malloc(sizeof(char **));
@@ -261,7 +261,7 @@ void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_resul
 				fprintf(stderr, "Could not allocate memory.\n");
 				exit(1);
 			}
-			
+
 			res->word[res->words-1] = malloc(sizeof(char) * (conn->expected_length + 1));
 			if (res->word[res->words-1] == NULL) {
 				fprintf(stderr, "Could not allocate memory.\n");
@@ -269,7 +269,7 @@ void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_resul
 			}
 			memcpy(res->word[res->words-1], conn->buffer, conn->expected_length);
 			res->word[res->words-1][conn->expected_length] = '\0';
-			
+
 			free(conn->buffer);
 			conn->buffer = NULL;
 			conn->expected_length = 0;
@@ -413,7 +413,7 @@ struct ros_result *ros_read_packet(struct ros_connection *conn) {
 				fprintf(stderr, "Could not allocate memory.");
 				exit(1);
 			}
-			
+
 			ret->word[ret->words-1] = malloc(sizeof(char) * (len + 1));
 			if (ret->word[ret->words-1] == NULL) {
 				fprintf(stderr, "Could not allocate memory.");
@@ -479,7 +479,7 @@ void ros_sentence_add(struct ros_sentence *sentence, char *word) {
 			exit(1);
 		}
 	}
-	
+
 	sentence->word[sentence->words] = strdup(word);
 	sentence->words++;
 }
@@ -487,7 +487,7 @@ void ros_sentence_add(struct ros_sentence *sentence, char *word) {
 static struct ros_sentence *ros_va_to_sentence(va_list ap, char *first, char *second) {
 	int i = 0;
 	struct ros_sentence *res = ros_sentence_new();
-	
+
 	while (1) {
 		char *word;
 		if (i == 0) {
@@ -506,7 +506,7 @@ static struct ros_sentence *ros_va_to_sentence(va_list ap, char *first, char *se
 				break;
 			}
 		}
-		
+
 		ros_sentence_add(res, word);
 		++i;
 	}
@@ -518,7 +518,7 @@ int ros_send_command_args(struct ros_connection *conn, char **args, int num) {
 	int i = 0, len;
 	char *arg;
 	if (num == 0) return 0;
-	
+
 	arg = args[i];
 	while (arg != 0 && (len = strlen(arg)) != 0) {
 		if (send_length(conn, len) == 0) {
@@ -532,7 +532,7 @@ int ros_send_command_args(struct ros_connection *conn, char **args, int num) {
 		}
 		arg = args[++i];
 	}
-	
+
 	/* Packet termination */
 	if (send_length(conn, 0) == 0) {
 	  return 0;
@@ -545,14 +545,14 @@ int ros_send_sentence(struct ros_connection *conn, struct ros_sentence *sentence
 	if (conn == NULL || sentence == NULL) {
 		return 0;
 	}
-	
+
 	return ros_send_command_args(conn, sentence->word, sentence->words);
 }
 
 static int ros_send_command_va(struct ros_connection *conn, char *extra, char *command, va_list ap) {
 	char *arg;
 	struct ros_sentence *sentence;
-	
+
 	sentence = ros_va_to_sentence(ap, command, extra);
 	return ros_send_sentence(conn, sentence);
 }
@@ -586,14 +586,14 @@ int ros_send_command_cb(struct ros_connection *conn, void (*callback)(struct ros
 		fprintf(stderr, "Error allocating memory\n");
 		exit(1);
 	}
-		
+
 	sprintf(event->tag, "%d", rand());
 	sprintf(extra, ".tag=%s", event->tag);
 	event->callback = callback;
-	
+
 	ros_add_event(conn, event);
 	free(event);
-	
+
 	va_list ap;
 	va_start(ap, command);
 	result = ros_send_command_va(conn, extra, command, ap);
@@ -643,7 +643,7 @@ struct ros_result *ros_send_command_wait(struct ros_connection *conn, char *comm
 	va_start(ap, command);
 	result = ros_send_command_va(conn, NULL, command, ap);
 	va_end(ap);
-	
+
 	if (result == 0) {
 		return NULL;
 	}
@@ -672,7 +672,7 @@ int ros_login(struct ros_connection *conn, char *username, char *password) {
 		exit(1);
 	}
 	md5toBin(buffer + 1, challenge);
-	
+
 	md5_init(&state);
 	md5_append(&state, buffer, 1);
 	md5_append(&state, password, strlen(password));
