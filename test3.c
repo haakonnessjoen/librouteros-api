@@ -75,9 +75,17 @@ int main(int argc, char **argv) {
 
 	if (ros_login(conn, argv[2], argv[3])) {
 		struct timeval timeout;
+		struct ros_sentence *sentence;
 
+		/* Static parameters/words */
 		ros_send_command_cb(conn, handleInterface, "/interface/print", "=stats", NULL);
-		ros_send_command_cb(conn, handleUptime, "/system/resource/print", "=.proplist=uptime,cpu-load", NULL);
+
+		/* Dynamic amount of parameters/words */
+		sentence = ros_sentence_new();
+		ros_sentence_add(sentence, "/system/resource/print");
+		ros_sentence_add(sentence, "=.proplist=uptime,cpu-load");
+		ros_send_sentence_cb(conn, handleUptime, sentence);
+		ros_sentence_free(sentence);
 
 		do_continue = 1;
 		timeout.tv_sec = 1;

@@ -169,11 +169,12 @@ void ros_set_type(struct ros_connection *conn, int type) {
 static void ros_handle_events(struct ros_connection *conn, struct ros_result *result) {
 	if (conn->num_events > 0) {
 		int i;
-		char *key = strdup(ros_get_tag(result));
+		char *key = ros_get_tag(result);
 		if (key == NULL) {
 			fprintf(stderr, "Cannot allocate memory\n");
 			exit(1);
 		}
+		key = strdup(key);
 		for (i = 0; i < conn->num_events; ++i) {
 			if (strcmp(key, conn->events[i]->tag) == 0) {
 				conn->events[i]->callback(result);
@@ -448,12 +449,78 @@ struct ros_result *ros_read_packet(struct ros_connection *conn) {
 	return ret;
 }
 
-static int ros_send_command_va(struct ros_connection *conn, char *extra, char *command, va_list ap) {
-	char *arg;
+struct ros_sentence *ros_sentence_new() {
+	struct ros_sentence *res = malloc(sizeof(struct ros_sentence));
+	res->words = 0;
+	res->word = malloc(sizeof(char *) * 100);
+	if (res->word == NULL) {
+		fprintf(stderr, "Error allocating memory\n");
+		exit(1);
+	}
+	return res;
+}
 
-	arg = command;
-	while (arg != 0 && strlen(arg) != 0) {
-		int len = strlen(arg);
+void ros_sentence_free(struct ros_sentence *sentence) {
+	int i;
+	if (sentence == NULL) return;
+
+	for (i = 0; i < sentence->words; ++i) {
+		free(sentence->word[i]);
+		sentence->word[i] = NULL;
+	}
+	free(sentence);
+}
+
+void ros_sentence_add(struct ros_sentence *sentence, char *word) {
+	if ((sentence->words+1) / 100 > sentence->words / 100) {
+		sentence->word = realloc(sentence->word, sizeof(char *) * ((((sentence->words+1)/100) + 1)*100));
+		if (sentence->word == NULL) {
+			fprintf(stderr, "Error allocating memory\n");
+			exit(1);
+		}
+	}
+	
+	sentence->word[sentence->words] = strdup(word);
+	sentence->words++;
+}
+
+static struct ros_sentence *ros_va_to_sentence(va_list ap, char *first, char *second) {
+	int i = 0;
+	struct ros_sentence *res = ros_sentence_new();
+	
+	while (1) {
+		char *word;
+		if (i == 0) {
+			word = first;
+		}
+		else if (i == 1) {
+			if (second != NULL) {
+				word = second;
+			} else {
+				++i;
+				continue;
+			}
+		} else {
+			word = va_arg(ap, char *);
+			if (word == NULL) {
+				break;
+			}
+		}
+		
+		ros_sentence_add(res, word);
+		++i;
+	}
+	return res;
+}
+
+
+int ros_send_command_args(struct ros_connection *conn, char **args, int num) {
+	int i = 0, len;
+	char *arg;
+	if (num == 0) return 0;
+	
+	arg = args[i];
+	while (arg != 0 && (len = strlen(arg)) != 0) {
 		if (send_length(conn, len) == 0) {
 			return 0;
 		}
@@ -463,25 +530,31 @@ static int ros_send_command_va(struct ros_connection *conn, char *extra, char *c
 		if (debug) {
 			printf("> %s\n", arg);
 		}
-		arg = va_arg(ap, char *);
+		arg = args[++i];
 	}
 	
-	if (extra != NULL) {
-		int len = strlen(extra);
-		if (len > 0 && send_length(conn, len) == 0) {
-			return 0;
-		}
-		if (write(conn->socket, extra, len) != len) {
-			return 0;
-		}
-	}
-
 	/* Packet termination */
 	if (send_length(conn, 0) == 0) {
 	  return 0;
 	}
 
 	return 1;
+}
+
+int ros_send_sentence(struct ros_connection *conn, struct ros_sentence *sentence) {
+	if (conn == NULL || sentence == NULL) {
+		return 0;
+	}
+	
+	return ros_send_command_args(conn, sentence->word, sentence->words);
+}
+
+static int ros_send_command_va(struct ros_connection *conn, char *extra, char *command, va_list ap) {
+	char *arg;
+	struct ros_sentence *sentence;
+	
+	sentence = ros_va_to_sentence(ap, command, extra);
+	return ros_send_sentence(conn, sentence);
 }
 
 void ros_add_event(struct ros_connection *conn, struct ros_event *event) {
@@ -503,6 +576,7 @@ void ros_add_event(struct ros_connection *conn, struct ros_event *event) {
 	memcpy(conn->events[conn->num_events-1], event, sizeof(struct ros_event));
 }
 
+/* TODO: Return id to event instance in connection object. And create ros_cancel() command. */
 int ros_send_command_cb(struct ros_connection *conn, void (*callback)(struct ros_result *result), char *command, ...) {
 	int result;
 	struct ros_event *event = malloc(sizeof(struct ros_event));
@@ -527,6 +601,30 @@ int ros_send_command_cb(struct ros_connection *conn, void (*callback)(struct ros
 
 	return result;
 }
+
+int ros_send_sentence_cb(struct ros_connection *conn, void (*callback)(struct ros_result *result), struct ros_sentence *sentence) {
+	int result;
+	struct ros_event *event = malloc(sizeof(struct ros_event));
+	char extra[120];
+
+	if (event == NULL) {
+		fprintf(stderr, "Error allocating memory\n");
+		exit(1);
+	}
+
+	sprintf(event->tag, "%d", rand());
+	sprintf(extra, ".tag=%s", event->tag);
+	event->callback = callback;
+
+	ros_add_event(conn, event);
+	free(event);
+
+	ros_sentence_add(sentence, extra);
+	result = ros_send_sentence(conn, sentence);
+
+	return result;
+}
+
 
 int ros_send_command(struct ros_connection *conn, char *command, ...) {
 	int result;
