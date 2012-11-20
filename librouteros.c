@@ -457,6 +457,7 @@ struct ros_sentence *ros_sentence_new() {
 	struct ros_sentence *res = malloc(sizeof(struct ros_sentence));
 	res->words = 0;
 	res->word = malloc(sizeof(char *) * 100);
+	memset(res->word, 0, sizeof(char *) * 100);
 	if (res->word == NULL) {
 		fprintf(stderr, "Error allocating memory\n");
 		exit(1);
@@ -472,6 +473,7 @@ void ros_sentence_free(struct ros_sentence *sentence) {
 		free(sentence->word[i]);
 		sentence->word[i] = NULL;
 	}
+	free(sentence->word);
 	free(sentence);
 }
 
@@ -519,7 +521,7 @@ static struct ros_sentence *ros_va_to_sentence(va_list ap, char *first, char *se
 
 
 int ros_send_command_args(struct ros_connection *conn, char **args, int num) {
-	int i = 0, len;
+	int i = 0, len = 0;
 	char *arg;
 	if (num == 0) return 0;
 
@@ -556,9 +558,12 @@ int ros_send_sentence(struct ros_connection *conn, struct ros_sentence *sentence
 static int ros_send_command_va(struct ros_connection *conn, char *extra, char *command, va_list ap) {
 	char *arg;
 	struct ros_sentence *sentence;
-
+	int result;
+	
 	sentence = ros_va_to_sentence(ap, command, extra);
-	return ros_send_sentence(conn, sentence);
+	result = ros_send_sentence(conn, sentence);
+	ros_sentence_free(sentence);
+	return result;
 }
 
 void ros_add_event(struct ros_connection *conn, struct ros_event *event) {
