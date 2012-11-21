@@ -26,9 +26,9 @@ Example code:
 		ros_free_result(res);
 
 More examples:
-  * [Example 1](blob/master/test.c)
-  * [Example 2](blob/master/test2.c)
-  * [Example 3](blob/master/test3.c)
+  * [Example 1](librouteros-api/blob/master/test.c)
+  * [Example 2](librouteros-api/blob/master/test2.c)
+  * [Example 3](librouteros-api/blob/master/test3.c)
 
 *********************
 
