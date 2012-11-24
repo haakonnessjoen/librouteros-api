@@ -187,7 +187,7 @@ static void ros_handle_events(struct ros_connection *conn, struct ros_result *re
 			}
 		}
 		fprintf(stderr, "warning: unhandeled event with tag: %s\n", key);
-		ros_free_result(result);
+		ros_result_free(result);
 		free(key);
 	}
 }
@@ -203,7 +203,7 @@ void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_resul
 		conn->expected_length = readLen(conn);
 		if (conn->expected_length > 0) {
 			conn->length = 0;
-			conn->buffer = malloc(conn->expected_length);
+			conn->buffer = malloc(sizeof(char) * (conn->expected_length + 1));
 
 			if (conn->buffer == NULL) {
 				fprintf(stderr, "Could not allocate memory for packet\n");
@@ -215,17 +215,17 @@ void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_resul
 		} else {
 			// Sentence done
 			// call callback
-			if (conn->event_result->words > 0) {
-				if (strcmp(conn->event_result->word[0], "!done") == 0) {
+			if (conn->event_result->sentence->words > 0) {
+				if (strcmp(conn->event_result->sentence->word[0], "!done") == 0) {
 					conn->event_result->done = 1;
 				}
-				if (strcmp(conn->event_result->word[0], "!re") == 0) {
+				if (strcmp(conn->event_result->sentence->word[0], "!re") == 0) {
 					conn->event_result->re = 1;
 				}
-				if (strcmp(conn->event_result->word[0], "!trap") == 0) {
+				if (strcmp(conn->event_result->sentence->word[0], "!trap") == 0) {
 					conn->event_result->trap = 1;
 				}
-				if (strcmp(conn->event_result->word[0], "!fatal") == 0) {
+				if (strcmp(conn->event_result->sentence->word[0], "!fatal") == 0) {
 					conn->event_result->fatal = 1;
 				}
 			}
@@ -248,31 +248,15 @@ void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_resul
 					exit(1);
 				}
 				memset(conn->event_result, 0, sizeof(conn->event_result));
+				conn->event_result->sentence = ros_sentence_new();
 				conn->event_result->done = 0;
 				conn->event_result->re = 0;
 				conn->event_result->trap = 0;
 				conn->event_result->fatal = 0;
 			}
 			res = conn->event_result;
-
-			res->words++;
-			if (res->words == 1) {
-				res->word = malloc(sizeof(char **));
-			} else {
-				res->word = realloc(res->word, sizeof(char **) * res->words);
-			}
-			if (res->word == NULL) {
-				fprintf(stderr, "Could not allocate memory.\n");
-				exit(1);
-			}
-
-			res->word[res->words-1] = malloc(sizeof(char) * (conn->expected_length + 1));
-			if (res->word[res->words-1] == NULL) {
-				fprintf(stderr, "Could not allocate memory.\n");
-				exit(1);
-			}
-			memcpy(res->word[res->words-1], conn->buffer, conn->expected_length);
-			res->word[res->words-1][conn->expected_length] = '\0';
+			conn->buffer[conn->length+to_read] = '\0';
+			ros_sentence_add(res->sentence, conn->buffer);
 
 			free(conn->buffer);
 			conn->buffer = NULL;
@@ -328,13 +312,9 @@ int ros_disconnect(struct ros_connection *conn) {
 	free(conn);
 }
 
-void ros_free_result(struct ros_result *result) {
-	int i;
-
-	for (i = 0; i < result->words; ++i) {
-		free(result->word[i]);
-	}
-	free(result->word);
+void ros_result_free(struct ros_result *result) {
+	ros_sentence_free(result->sentence);
+	result->sentence = NULL;
 	free(result);
 }
 
@@ -371,10 +351,10 @@ char *ros_get(struct ros_result *result, char *key) {
 	search[keylen] = '=';
 	search[keylen+1] = '\0';
 
-	for (i = 0; i < result->words; ++i) {
-		if (strcmp2(search, result->word[i])) {
+	for (i = 0; i < result->sentence->words; ++i) {
+		if (strcmp2(search, result->sentence->word[i])) {
 			free(search);
-			return result->word[i] + keylen + 1;
+			return result->sentence->word[i] + keylen + 1;
 		}
 	}
 	free(search);
@@ -395,10 +375,12 @@ struct ros_result *ros_read_packet(struct ros_connection *conn) {
 	ret->re = 0;
 	ret->trap = 0;
 	ret->fatal = 0;
+	ret->sentence = ros_sentence_new();
+
 	do {
 		char *buffer;
 		len = readLen(conn);
-		buffer = malloc(sizeof(char) * len);
+		buffer = malloc(sizeof(char) * (len + 1));
 		if (buffer == NULL) {
 			fprintf(stderr, "Could not allocate memory.");
 			exit(1);
@@ -406,47 +388,30 @@ struct ros_result *ros_read_packet(struct ros_connection *conn) {
 
 		if (len > 0) {
 			read(conn->socket, buffer, len);
-
-			ret->words++;
-			if (ret->words == 1) {
-				ret->word = malloc(sizeof(char **));
-			} else {
-				ret->word = realloc(ret->word, sizeof(char **) * ret->words);
-			}
-			if (ret->word == NULL) {
-				fprintf(stderr, "Could not allocate memory.");
-				exit(1);
-			}
-
-			ret->word[ret->words-1] = malloc(sizeof(char) * (len + 1));
-			if (ret->word[ret->words-1] == NULL) {
-				fprintf(stderr, "Could not allocate memory.");
-				exit(1);
-			}
-			memcpy(ret->word[ret->words-1], buffer, len);
-			ret->word[ret->words-1][len] = '\0';
+			buffer[len] = '\0';
+			ros_sentence_add(ret->sentence, buffer);
 		}
 		free(buffer);
 
 	} while (len > 0);
-	if (ret->words > 0) {
-		if (strcmp(ret->word[0], "!done") == 0) {
+	if (ret->sentence->words > 0) {
+		if (strcmp(ret->sentence->word[0], "!done") == 0) {
 			ret->done = 1;
 		}
-		if (strcmp(ret->word[0], "!re") == 0) {
+		if (strcmp(ret->sentence->word[0], "!re") == 0) {
 			ret->re = 1;
 		}
-		if (strcmp(ret->word[0], "!trap") == 0) {
+		if (strcmp(ret->sentence->word[0], "!trap") == 0) {
 			ret->trap = 1;
 		}
-		if (strcmp(ret->word[0], "!fatal") == 0) {
+		if (strcmp(ret->sentence->word[0], "!fatal") == 0) {
 			ret->fatal = 1;
 		}
 	}
 	if (debug) {
 		int i;
-		for (i = 0; i < ret->words; ++i) {
-			printf("< %s\n", ret->word[i]);
+		for (i = 0; i < ret->sentence->words; ++i) {
+			printf("< %s\n", ret->sentence->word[i]);
 		}
 	}
 
@@ -474,6 +439,7 @@ void ros_sentence_free(struct ros_sentence *sentence) {
 		sentence->word[i] = NULL;
 	}
 	free(sentence->word);
+	sentence->word = NULL;
 	free(sentence);
 }
 
@@ -687,7 +653,7 @@ int ros_login(struct ros_connection *conn, char *username, char *password) {
 	md5_append(&state, password, strlen(password));
 	md5_append(&state, buffer + 1, 16);
 	md5_finish(&state, (md5_byte_t *)md5sum);
-	ros_free_result(res);
+	ros_result_free(res);
 
 	strcpy(buffer, "00");
 	bintomd5(buffer + 2, md5sum);
@@ -711,7 +677,7 @@ int ros_login(struct ros_connection *conn, char *username, char *password) {
 
 	// !done == successful login
 	result = res->done;
-	ros_free_result(res);
+	ros_result_free(res);
 
 	return result;
 }

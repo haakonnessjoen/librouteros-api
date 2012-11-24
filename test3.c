@@ -29,6 +29,7 @@
 
 struct ros_connection *conn;
 volatile int do_continue = 0;
+volatile int tasks = 0;
 
 void handleInterface(struct ros_result *result) {
 	static int calls = 0;
@@ -43,16 +44,21 @@ void handleInterface(struct ros_result *result) {
 
 	if (result->done) {
 		printf("\n");
+		tasks--;
 	}
 
-	ros_free_result(result);
+	ros_result_free(result);
 }
 
 void handleUptime(struct ros_result *result) {
 	if (result->re) {
 		printf("Resources:\n  Uptime: %s\n  CPU load: %s%%\n\n", ros_get(result, "=uptime"), ros_get(result, "=cpu-load"));
 	}
-	ros_free_result(result);
+
+	if (result->done) {
+		tasks--;
+	}
+	ros_result_free(result);
 }
 
 int main(int argc, char **argv) {
@@ -79,6 +85,7 @@ int main(int argc, char **argv) {
 
 		/* Static parameters/words */
 		ros_send_command_cb(conn, handleInterface, "/interface/print", "=stats", NULL);
+		tasks++;
 
 		/* Dynamic amount of parameters/words */
 		sentence = ros_sentence_new();
@@ -86,6 +93,7 @@ int main(int argc, char **argv) {
 		ros_sentence_add(sentence, "=.proplist=uptime,cpu-load");
 		ros_send_sentence_cb(conn, handleUptime, sentence);
 		ros_sentence_free(sentence);
+		tasks++;
 
 		do_continue = 1;
 		timeout.tv_sec = 1;
@@ -102,8 +110,8 @@ int main(int argc, char **argv) {
 					/* handle incoming data with specified callback */
 					runloop_once(conn, NULL);
 				}
-			} else {
-				/* Run every idle second */
+			}
+			if (tasks == 0) {
 				ros_disconnect(conn);
 				return 0;
 			}

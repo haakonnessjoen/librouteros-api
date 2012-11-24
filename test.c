@@ -53,10 +53,10 @@ int main(int argc, char **argv) {
 
 			printf("  %20s  %20s  %20s  %20s\n", ros_get(res, "=name"), ros_get(res, "=type"), ros_get(res, "=rx-byte"), ros_get(res, "=tx-byte"));			
 
-			ros_free_result(res);
+			ros_result_free(res);
 			res = ros_read_packet(conn);
 		}
-		ros_free_result(res);
+		ros_result_free(res);
 
 		ros_disconnect(conn);
 	} else {

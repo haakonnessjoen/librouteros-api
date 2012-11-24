@@ -39,7 +39,7 @@ void handleData(struct ros_result *result) {
 	if (!result->done)
 		printf("  %20s  %20s  %20s  %20s\n", ros_get(result, "=name"), ros_get(result, "=type"), ros_get(result, "=rx-byte"), ros_get(result, "=tx-byte"));			
 
-	ros_free_result(result);
+	ros_result_free(result);
 }
 
 int main(int argc, char **argv) {

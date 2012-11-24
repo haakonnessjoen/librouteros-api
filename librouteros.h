@@ -23,8 +23,7 @@ struct ros_sentence {
 };
 
 struct ros_result {
-	int words;
-	char **word;
+	struct ros_sentence *sentence;
 	char done;
 	char re;
 	char trap;
@@ -66,7 +65,7 @@ int ros_login(struct ros_connection *conn, char *username, char *password);
 /* common functions */
 struct ros_connection *ros_connect(char *address, int port);
 int ros_disconnect(struct ros_connection *conn);
-void ros_free_result(struct ros_result *result);
+void ros_result_free(struct ros_result *result);
 char *ros_get(struct ros_result *result, char *key);
 char *ros_get_tag(struct ros_result *result);
 
