@@ -453,6 +453,10 @@ void ros_sentence_add(struct ros_sentence *sentence, char *word) {
 	}
 
 	sentence->word[sentence->words] = strdup(word);
+	if (sentence->word[sentence->words] == NULL) {
+		fprintf(stderr, "Error allocating memory\n");
+		exit(1);
+	}
 	sentence->words++;
 }
 
