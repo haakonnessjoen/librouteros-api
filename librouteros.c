@@ -18,15 +18,21 @@
 */
 #include <stdio.h>
 #include <sys/types.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#endif
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <stdarg.h>
+#ifndef _WIN32
 #include <sys/uio.h>
+#endif
 #include <fcntl.h>
 #include "md5.h"
 #include "librouteros.h"
@@ -37,6 +43,23 @@ static int debug = 0;
 	data, using local or external select/event loop
 */
 
+#ifdef _WIN32
+static int _read (SOCKET socket, char *data, int len) {
+	int rlen = recv(socket, data, len, 0);
+	if (rlen == SOCKET_ERROR) return -1;
+	return rlen;
+}
+static int _write(SOCKET socket, char *data, int len) {
+	int wlen = send(socket, data, len, 0);
+	if (wlen == SOCKET_ERROR) return -1;
+	return wlen;
+}
+#else
+#define _read(s,d,l) read(s,d,l)
+#define _write(s,d,l) write(s,d,l)
+#endif
+
+
 static int send_length(struct ros_connection *conn, int len) {
 	char data[4];
 	int written;
@@ -44,7 +67,7 @@ static int send_length(struct ros_connection *conn, int len) {
 
 	if (len < 0x80) {
 		data[0] = (char)len;
-		written = write(conn->socket, data, 1);
+		written = _write(conn->socket, data, 1);
 		towrite = 1;
 	}
 	else if (len < 0x4000) {
@@ -53,7 +76,7 @@ static int send_length(struct ros_connection *conn, int len) {
 		memcpy(data, &len, 2);
 		data[0] |= 0x80;
 
-		written = write(conn->socket, data, 2);
+		written = _write(conn->socket, data, 2);
 		towrite = 2;
 	}
  	else if (len < 0x200000)
@@ -61,7 +84,7 @@ static int send_length(struct ros_connection *conn, int len) {
 		len = htonl(len);
 		memcpy(data, &len, 3);
 		data[0] |= 0xc0;
-		written = write (conn->socket, data, 3);
+		written = _write(conn->socket, data, 3);
 		towrite = 3;
 	}
 	else if (len < 0x10000000)
@@ -69,7 +92,7 @@ static int send_length(struct ros_connection *conn, int len) {
 		len = htonl(len);
 		memcpy(data, &len, 4);
 		data[0] |= 0xe0;
-		written = write (conn->socket, data, 4);
+		written = _write(conn->socket, data, 4);
 		towrite = 4;
 	}
 	else  // this should never happen
@@ -83,26 +106,25 @@ static int send_length(struct ros_connection *conn, int len) {
 
 static int readLen(struct ros_connection *conn)
 {
-	char data[4]; // first character read from socket
-	int len;       // calculated length of next message (Cast to int)
+	char data[4];
 
 	memset(data, 0, 4);
-	read(conn->socket, data, 1);
+	_read(conn->socket, data, 1);
 
 	if ((data[0] & 0xE0) == 0xE0) {
-		read(conn->socket, data + 1, 3);
+		_read(conn->socket, data + 1, 3);
 		printf("Giant packet: %d\n", *((int *)data));
 		return *((int *)data);
 	}
 	else if ((data[0] & 0xC0) == 0XC0) {
 		data[0] &= 0x3f;        // mask out the 1st 2 bits
-		read(conn->socket, data + 1, 2);
+		_read(conn->socket, data + 1, 2);
 		printf("Lesser small packet: %d\n", *((int *)data));
 		return *((int *)data);
 	}
 	else if ((data[0] & 0x80) == 0x80) {
 		data[0] &= 0x7f;        // mask out the 1st bit
-		read(conn->socket, data + 1, 1);
+		_read(conn->socket, data + 1, 1);
 		printf("Less small packet: %d\n", *((int *)data));
 		return *((int *)data);
 	}
@@ -145,6 +167,7 @@ static int bintomd5(char *dst, char *bin) {
 
 void ros_set_type(struct ros_connection *conn, int type) {
 	int blocking = 0;
+	int flags;
 
 	conn->type = type;
 
@@ -152,18 +175,19 @@ void ros_set_type(struct ros_connection *conn, int type) {
 		blocking = 1;
 	}
 
-	int flags = fcntl(conn->socket, F_GETFL, 0);
+//	int flags = fcntl(conn->socket, F_GETFL, 0);
 	if (flags < 0) {
 		fprintf(stderr, "Error getting socket flags\n");
 		exit(1);
 	}
 
-	flags = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
+//	flags = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
 
-	if (fcntl(conn->socket, F_SETFL, flags) != 0) {
+/*	if (fcntl(conn->socket, F_SETFL, flags) != 0) {
 		fprintf(stderr, "Could not set socket to NONBLOCKING\n");
 		exit(1);
 	}
+	*/
 }
 
 static void ros_handle_events(struct ros_connection *conn, struct ros_result *result) {
@@ -238,7 +262,7 @@ void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_resul
 		}
 	} else {
 		int to_read = conn->expected_length - conn->length;
-		int got = read(conn->socket, conn->buffer + conn->length, to_read);
+		int got = _read(conn->socket, conn->buffer + conn->length, to_read);
 			if (got == to_read) {
 			struct ros_result *res;
 			if (conn->event_result == NULL) {
@@ -270,10 +294,23 @@ struct ros_connection *ros_connect(char *address, int port) {
 	struct sockaddr_in s_address;
 	struct ros_connection *conn = malloc(sizeof(struct ros_connection));
 
+#ifdef _WIN32
+	WSADATA wsaData;
+	int retval;
+#endif
+
 	if (conn == NULL) {
 		fprintf(stderr, "Error allocating memory\n");
 		exit(1);
 	}
+
+#ifdef _WIN32
+	if ((retval = WSAStartup(0x202, &wsaData)) != 0) {
+        fprintf(stderr,"Server: WSAStartup() failed with error %d\n", retval);
+        WSACleanup();
+        return NULL;
+    }
+#endif
 
 	conn->expected_length = 0;
 	conn->length = 0;
@@ -290,7 +327,14 @@ struct ros_connection *ros_connect(char *address, int port) {
 	s_address.sin_addr.s_addr = inet_addr(address);
 	s_address.sin_port = htons(port);
 
-	if (connect(conn->socket, (struct sockaddr *)&s_address, sizeof(s_address)) == -1) {
+	if (
+		connect(conn->socket, (struct sockaddr *)&s_address, sizeof(s_address)) ==
+#ifdef _WIN32
+		SOCKET_ERROR
+#else
+		-1
+#endif
+	) {
 		return NULL;
 	}
 
@@ -298,7 +342,11 @@ struct ros_connection *ros_connect(char *address, int port) {
 }
 
 int ros_disconnect(struct ros_connection *conn) {
+#ifdef _WIN32
+	closesocket(conn->socket);
+#else
 	close(conn->socket);
+#endif
 
 	if (conn->num_events > 0) {
 		int i;
@@ -387,7 +435,7 @@ struct ros_result *ros_read_packet(struct ros_connection *conn) {
 		}
 
 		if (len > 0) {
-			read(conn->socket, buffer, len);
+			_read(conn->socket, buffer, len);
 			buffer[len] = '\0';
 			ros_sentence_add(ret->sentence, buffer);
 		}
@@ -500,7 +548,7 @@ int ros_send_command_args(struct ros_connection *conn, char **args, int num) {
 		if (send_length(conn, len) == 0) {
 			return 0;
 		}
-		if (write(conn->socket, arg, len) != len) {
+		if (_write(conn->socket, arg, len) != len) {
 			return 0;
 		}
 		if (debug) {
@@ -560,6 +608,7 @@ int ros_send_command_cb(struct ros_connection *conn, void (*callback)(struct ros
 	int result;
 	struct ros_event *event = malloc(sizeof(struct ros_event));
 	char extra[120];
+	va_list ap;
 
 	if (event == NULL) {
 		fprintf(stderr, "Error allocating memory\n");
@@ -573,7 +622,6 @@ int ros_send_command_cb(struct ros_connection *conn, void (*callback)(struct ros
 	ros_add_event(conn, event);
 	free(event);
 
-	va_list ap;
 	va_start(ap, command);
 	result = ros_send_command_va(conn, extra, command, ap);
 	va_end(ap);

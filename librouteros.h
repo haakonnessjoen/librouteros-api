@@ -41,7 +41,11 @@ struct ros_connection {
 		ROS_EVENT
 	} type;
 
+#ifdef _WIN32
+	SOCKET socket;
+#else
 	int socket;
+#endif
 	unsigned char *buffer;
 	struct ros_event **events;
 	int num_events;
@@ -50,6 +54,10 @@ struct ros_connection {
 	int length;
 };
 
+#ifdef __cplusplus
+extern "C" 
+{
+#endif
 /* event based functions */
 int ros_send_command(struct ros_connection *conn, char *command, ...);
 void ros_set_type(struct ros_connection *conn, int type);
@@ -74,5 +82,8 @@ struct ros_sentence *ros_sentence_new();
 void ros_sentence_free(struct ros_sentence *sentence);
 void ros_sentence_add(struct ros_sentence *sentence, char *word);
 
+#ifdef __cplusplus
+}
+#endif
 
 #define ROS_PORT 8728
