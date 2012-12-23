@@ -5,11 +5,9 @@ This is my implementation of the RouterOS api protocol, described at http://wiki
 
 The other C implementations seemed either over complicated, or too simple.
 
-Still in alpha stage.
+This example logs into a router and lists all interfaces available on the remote device.
 
-Example logs into router and lists interfaces available.
-
-Example code:  
+### Example code:  
 
 		struct ros_result *res;
 
@@ -25,10 +23,15 @@ Example code:
 		}
 		ros_free_result(res);
 
-More examples:
+### More examples:
   * [Example 1](librouteros-api/blob/master/test.c)
   * [Example 2](librouteros-api/blob/master/test2.c)
   * [Example 3](librouteros-api/blob/master/test3.c)
+
+### This library is tested and proved working on
+  * Linux
+  * Mac OSX
+  * Windows XP
 
 *********************
 
