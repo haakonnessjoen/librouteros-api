@@ -35,12 +35,14 @@ struct ros_event {
 	void (*callback)(struct ros_result *result);
 };
 
-struct ros_connection {
-	enum {
+enum ros_type {
 		ROS_SIMPLE,
 		ROS_EVENT
-	} type;
+};
 
+
+struct ros_connection {
+	enum ros_type type;
 #ifdef _WIN32
 	SOCKET socket;
 #else
@@ -60,7 +62,7 @@ extern "C"
 #endif
 /* event based functions */
 int ros_send_command(struct ros_connection *conn, char *command, ...);
-void ros_set_type(struct ros_connection *conn, int type);
+void ros_set_type(struct ros_connection *conn, enum ros_type type);
 void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result));
 int ros_send_command_cb(struct ros_connection *conn, void (*callback)(struct ros_result *result), char *command, ...);
 int ros_send_sentence_cb(struct ros_connection *conn, void (*callback)(struct ros_result *result), struct ros_sentence *sentence);

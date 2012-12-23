@@ -165,7 +165,7 @@ static int bintomd5(char *dst, char *bin) {
 	return 1;
 }
 
-void ros_set_type(struct ros_connection *conn, int type) {
+void ros_set_type(struct ros_connection *conn, enum ros_type type) {
 	int blocking = 0;
 	int flags;
 
@@ -175,19 +175,24 @@ void ros_set_type(struct ros_connection *conn, int type) {
 		blocking = 1;
 	}
 
-//	int flags = fcntl(conn->socket, F_GETFL, 0);
+#ifndef _WIN32
+	flags = fcntl(conn->socket, F_GETFL, 0);
 	if (flags < 0) {
 		fprintf(stderr, "Error getting socket flags\n");
 		exit(1);
 	}
 
-//	flags = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
+	flags = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
+#endif
 
-/*	if (fcntl(conn->socket, F_SETFL, flags) != 0) {
-		fprintf(stderr, "Could not set socket to NONBLOCKING\n");
+#ifdef _WIN32
+	if (ioctlsocket(conn->socket, FIONBIO, &blocking) == SOCKET_ERROR) {
+#else
+	if (fcntl(conn->socket, F_SETFL, flags) != 0) {
+#endif
+		fprintf(stderr, "Could not set socket to non-blocking mode\n");
 		exit(1);
 	}
-	*/
 }
 
 static void ros_handle_events(struct ros_connection *conn, struct ros_result *result) {
