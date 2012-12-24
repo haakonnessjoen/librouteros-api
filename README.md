@@ -32,6 +32,8 @@ This example logs into a router and lists all interfaces available on the remote
   * Linux
   * Mac OSX
   * Windows XP
+  * Windows CE 6.0
+  * Windows Mobile 5.0 Pocket PC
 
 *********************
 
@@ -79,7 +81,7 @@ You should always free a result after usage, or you will experience memory leak.
 
 # Event based usage
 
-== Example
+## Example
 
 Look at test3.c for a example of automatic event dispatching using .tags (tags are internally chosen by librouteros).
 
