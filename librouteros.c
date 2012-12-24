@@ -133,7 +133,7 @@ static int readLen(struct ros_connection *conn)
 	return 0;
 }
 
-static int md5toBin(char *dst, char *hex) {
+static int md5toBin(unsigned char *dst, char *hex) {
 	int i;
 	char convert[3];
 	unsigned int data;
@@ -152,10 +152,8 @@ static int md5toBin(char *dst, char *hex) {
 	return 1;
 }
 
-static int bintomd5(char *dst, char *bin) {
+static int bintomd5(char *dst, unsigned char *bin) {
 	int i;
-	char convert[3];
-	unsigned int data;
 
 	for (i = 0; i < 16; ++i) {
 		sprintf(dst+(i<<1), "%02x", bin[i] & 0xFF);
@@ -284,7 +282,7 @@ void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_resul
 			}
 			res = conn->event_result;
 			conn->buffer[conn->length+to_read] = '\0';
-			ros_sentence_add(res->sentence, conn->buffer);
+			ros_sentence_add(res->sentence, (char *)conn->buffer);
 
 			free(conn->buffer);
 			conn->buffer = NULL;
@@ -346,10 +344,13 @@ struct ros_connection *ros_connect(char *address, int port) {
 }
 
 int ros_disconnect(struct ros_connection *conn) {
+	int result = 0;
 #ifdef _WIN32
-	closesocket(conn->socket);
+	if (closesocket(conn->socket) == SOCKET_ERROR) {
+		result = -1;
+	}
 #else
-	close(conn->socket);
+	result = close(conn->socket);
 #endif
 
 	if (conn->num_events > 0) {
@@ -362,6 +363,8 @@ int ros_disconnect(struct ros_connection *conn) {
 		conn->events = NULL;
 	}
 	free(conn);
+
+	return result;
 }
 
 void ros_result_free(struct ros_result *result) {
@@ -578,7 +581,6 @@ int ros_send_sentence(struct ros_connection *conn, struct ros_sentence *sentence
 }
 
 static int ros_send_command_va(struct ros_connection *conn, char *extra, char *command, va_list ap) {
-	char *arg;
 	struct ros_sentence *sentence;
 	int result;
 	
@@ -668,7 +670,6 @@ int ros_send_command(struct ros_connection *conn, char *command, ...) {
 
 struct ros_result *ros_send_command_wait(struct ros_connection *conn, char *command, ...) {
 	int result;
-	char *arg;
 
 	va_list ap;
 	va_start(ap, command);
@@ -685,12 +686,12 @@ struct ros_result *ros_send_command_wait(struct ros_connection *conn, char *comm
 /* TODO: write with events */
 int ros_login(struct ros_connection *conn, char *username, char *password) {
 	int result;
-	char buffer[1024];
+	unsigned char buffer[1024];
 	char *userWord;
 	char passWord[45];
 	char *challenge;
 	struct ros_result *res;
-	unsigned char md5sum[17];
+	char md5sum[17];
 	md5_state_t state;
 
 	res = ros_send_command_wait(conn, "/login", NULL);
@@ -706,16 +707,16 @@ int ros_login(struct ros_connection *conn, char *username, char *password) {
 
 	md5_init(&state);
 	md5_append(&state, buffer, 1);
-	md5_append(&state, password, strlen(password));
+	md5_append(&state, (unsigned char *)password, strlen(password));
 	md5_append(&state, buffer + 1, 16);
 	md5_finish(&state, (md5_byte_t *)md5sum);
 	ros_result_free(res);
 
-	strcpy(buffer, "00");
-	bintomd5(buffer + 2, md5sum);
+	strcpy((char *)buffer, "00");
+	bintomd5((char *)buffer + 2, (unsigned char *)md5sum);
 
 	strcpy(passWord, "=response=");
-	strcat(passWord, buffer);
+	strcat(passWord, (char *)buffer);
 	passWord[44] = '\0';
 
 	userWord = malloc(sizeof(char) * (6 + strlen(username) + 1));

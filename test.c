@@ -29,9 +29,7 @@
 struct ros_connection *conn;
 
 int main(int argc, char **argv) {
-	struct sockaddr_in address;
-	int len;
-
+	
 	if (argc < 4) {
 		fprintf(stderr, "Usage: %s <ip> <user> <password>\n", argv[0]);
 		return 1;

@@ -43,9 +43,7 @@ void handleData(struct ros_result *result) {
 }
 
 int main(int argc, char **argv) {
-	struct sockaddr_in address;
 	fd_set read_fds;
-	int len;
 
 	if (argc < 4) {
 		fprintf(stderr, "Usage: %s <ip> <user> <password>\n", argv[0]);
