@@ -17,25 +17,25 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 #include <stdio.h>
-#include <sys/types.h>
+#include <stdlib.h>
 #ifdef _WIN32
-#include <winsock2.h>
+#  define strdup _strdup
+#  include <winsock2.h>
 #else
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
+#  include <sys/types.h>
+#  include <sys/socket.h>
+#  include <netinet/in.h>
+#  include <arpa/inet.h>
+#  include <unistd.h>
+#  include <errno.h>
+#  include <sys/uio.h>
+#  include <fcntl.h>
 #endif
 #include <string.h>
-#include <stdlib.h>
-#include <errno.h>
 #include <stdarg.h>
-#ifndef _WIN32
-#include <sys/uio.h>
-#endif
-#include <fcntl.h>
 #include "md5.h"
 #include "librouteros.h"
+
 
 static int debug = 0;
 
@@ -58,7 +58,6 @@ static int _write(SOCKET socket, char *data, int len) {
 #define _read(s,d,l) read(s,d,l)
 #define _write(s,d,l) write(s,d,l)
 #endif
-
 
 static int send_length(struct ros_connection *conn, int len) {
 	char data[4];
