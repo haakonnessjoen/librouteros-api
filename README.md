@@ -65,6 +65,9 @@ Use the following functions:
   * ros_connect
   * ros_login
   * ros_set_type
+  * ros_sentence_new
+  * ros_sentence_add
+  * ros_sentence_free
   * ros_send_*_cb
   * ros_get
   * ros_result_free
