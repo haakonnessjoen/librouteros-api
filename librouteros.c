@@ -108,22 +108,30 @@ static int readLen(struct ros_connection *conn)
 	char data[4];
 
 	memset(data, 0, 4);
-	_read(conn->socket, data, 1);
+	if (_read(conn->socket, data, 1) != 1) {
+		return -1;
+	}
 
 	if ((data[0] & 0xE0) == 0xE0) {
-		_read(conn->socket, data + 1, 3);
+		if (_read(conn->socket, data + 1, 3) != 3) {
+			return -1;
+		}
 		printf("Giant packet: %d\n", *((int *)data));
 		return *((int *)data);
 	}
 	else if ((data[0] & 0xC0) == 0XC0) {
 		data[0] &= 0x3f;        // mask out the 1st 2 bits
-		_read(conn->socket, data + 1, 2);
+		if (_read(conn->socket, data + 1, 2) != 2) {
+			return -1;
+		}
 		printf("Lesser small packet: %d\n", *((int *)data));
 		return *((int *)data);
 	}
 	else if ((data[0] & 0x80) == 0x80) {
 		data[0] &= 0x7f;        // mask out the 1st bit
-		_read(conn->socket, data + 1, 1);
+		if (_read(conn->socket, data + 1, 1) != 1) {
+			return -1;
+		}
 		printf("Less small packet: %d\n", *((int *)data));
 		return *((int *)data);
 	}
@@ -238,7 +246,7 @@ void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_resul
 
 			/* Check for more data at once */
 			runloop_once(conn, callback);
-		} else {
+		} else if (conn->expected_length == 0) {
 			// Sentence done
 			// call callback
 			if (conn->event_result->sentence->words > 0) {
@@ -435,6 +443,8 @@ struct ros_result *ros_read_packet(struct ros_connection *conn) {
 	do {
 		char *buffer;
 		len = readLen(conn);
+		if (len < 0) return NULL;
+
 		buffer = malloc(sizeof(char) * (len + 1));
 		if (buffer == NULL) {
 			fprintf(stderr, "Could not allocate memory.");
