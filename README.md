@@ -30,7 +30,8 @@ This example logs into a router and lists all interfaces available on the remote
 
 ### This library is tested and proved working on
   * Linux
-  * Mac OSX
+  * Mac OSX (llvm/gcc)
+  * Apple iPhone IOS (llvm/gcc)
   * Windows XP
   * Windows CE 6.0
   * Windows Mobile 5.0 Pocket PC
