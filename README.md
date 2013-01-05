@@ -73,6 +73,30 @@ Use the following functions:
   * ros_result_free
   * ros_disconnect
 
+### Different methods to send commands (sentences)
+
+You can either use the variable argument way, if you have a fixed amount
+of words in your sentences, or the sentence building way. (read about words and sentences in the
+Mikrotik API documentation)
+
+#### Using variable arguments
+  * Sending commands (either)
+    * ros_send_command_wait
+    * ros_send_command_cb
+
+#### Using dynamically added words
+  * Building sentence
+    * ros_sentence_new
+    * ros_sentence_add
+    * ros_sentence_free
+  * Sending commands (either)
+    * ros_send_sentence_wait
+    * ros_send_sentence_cb
+
+You choose ros_send_*_wait if you want to use blocking functions, and you
+choose ros_send_*_cb functions if you are using non-blocking
+functions. (remember to set the mode you want with ros_set_type)
+
 ## Function documentation
 
 ### struct ros_connection *ros_connect(char *address, int port);
