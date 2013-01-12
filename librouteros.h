@@ -17,6 +17,8 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+#define ROS_PORT 8728
+
 struct ros_sentence {
 	char **word;
 	int words;
@@ -63,7 +65,7 @@ extern "C"
 /* event based functions */
 int ros_send_command(struct ros_connection *conn, char *command, ...);
 void ros_set_type(struct ros_connection *conn, enum ros_type type);
-void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result));
+void ros_runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result));
 int ros_send_command_cb(struct ros_connection *conn, void (*callback)(struct ros_result *result), char *command, ...);
 int ros_send_sentence_cb(struct ros_connection *conn, void (*callback)(struct ros_result *result), struct ros_sentence *sentence);
 
@@ -87,5 +89,3 @@ void ros_sentence_add(struct ros_sentence *sentence, char *word);
 #ifdef __cplusplus
 }
 #endif
-
-#define ROS_PORT 8728

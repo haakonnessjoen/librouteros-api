@@ -78,7 +78,7 @@ int main(int argc, char **argv) {
 			if (reads > 0) {
 				if (FD_ISSET(conn->socket, &read_fds)) {
 					/* handle incoming data with specified callback */
-					runloop_once(conn, handleData);
+					ros_runloop_once(conn, handleData);
 				}
 			} else {
 				/* Run every idle second */

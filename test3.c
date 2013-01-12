@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
 			if (reads > 0) {
 				if (FD_ISSET(conn->socket, &read_fds)) {
 					/* handle incoming data with specified callback */
-					runloop_once(conn, NULL);
+					ros_runloop_once(conn, NULL);
 				}
 			}
 			if (tasks == 0) {

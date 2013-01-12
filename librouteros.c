@@ -226,7 +226,7 @@ static void ros_handle_events(struct ros_connection *conn, struct ros_result *re
 	}
 }
 
-void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result)) {
+void ros_runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result)) {
 	/* Make sure the connection/instance is event based */
 	if (conn->type != ROS_EVENT) {
 		fprintf(stderr, "Warning! Connection type was not set to ROS_EVENT. Forcing change.\n");
@@ -245,7 +245,7 @@ void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_resul
 			}
 
 			/* Check for more data at once */
-			runloop_once(conn, callback);
+			ros_runloop_once(conn, callback);
 		} else if (conn->expected_length == 0) {
 			// Sentence done
 			// call callback

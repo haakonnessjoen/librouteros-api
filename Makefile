@@ -20,6 +20,7 @@ test3: test3.c md5.o librouteros.o
 
 install: librouteros.so
 	cp librouteros.so /usr/lib/
+	cp librouteros.h /usr/include/
 
 clean:
 	rm -f test *.o *.so
