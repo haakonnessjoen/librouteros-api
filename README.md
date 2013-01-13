@@ -73,6 +73,7 @@ Use the following functions:
   * ros_get
   * ros_result_free
   * ros_disconnect
+  * ros_runloop_once
 
 ### Different methods to send commands (sentences)
 
@@ -152,7 +153,7 @@ Returns 1 on success and 0 on failure.
 
 Use this to enter "event" mode. (nonblocking sockets) Usage: ros_set_type(conn, ROS_EVENT);
 
-#### void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result));
+#### void ros_runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result));
 
 Use select/epoll/poll to check for data on conn->socket. When you know there is data present, run the runloop_once() command with a callback function to handle the result. The callback function should be defined as: void callbackname(struct ros_result *result);
 Look at test2.c for a select() example.	
