@@ -1,18 +1,18 @@
 /*
     librouteros-api - Connect to RouterOS devices using official API protocol
-    Copyright (C) 2012, Håkon Nessjøen <haakon.nessjoen@gmail.com>
+    Copyright (C) 2013, Håkon Nessjøen <haakon.nessjoen@gmail.com>
 
     This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
+    it under the terms of the GNU Lesser General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
 
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+    GNU Lesser General Public License for more details.
 
-    You should have received a copy of the GNU General Public License along
+    You should have received a copy of the GNU Lesser General Public License along
     with this program; if not, write to the Free Software Foundation, Inc.,
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
@@ -25,39 +25,30 @@
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
-#include "librouteros.h"
+#include "../librouteros.h"
 
 struct ros_connection *conn;
 volatile int do_continue = 0;
-volatile int tasks = 0;
 
-void handleInterface(struct ros_result *result) {
-	static int calls = 0;
-
-	if (result->re && calls++ == 0) {
-		printf("Interfaces:\n");
-	}
+void handledata(struct ros_result *result) {
+	int i;
 
 	if (result->re) {
-		printf("  %20s  %20s  %20s  %20s\n", ros_get(result, "=name"), ros_get(result, "=type"), ros_get(result, "=rx-byte"), ros_get(result, "=tx-byte"));			
+		printf("--\n");
 	}
-
+	if (result->trap) {
+		printf("!trap Error following:\n");
+	}
+	if (result->fatal) {
+		printf("!fatal:\n");
+	}
+	for (i = 1; i < result->sentence->words; ++i) {
+		printf(">%s\n", result->sentence->word[i]);
+	}
 	if (result->done) {
-		printf("\n");
-		tasks--;
+		printf("==\n\n");
 	}
 
-	ros_result_free(result);
-}
-
-void handleUptime(struct ros_result *result) {
-	if (result->re) {
-		printf("Resources:\n  Uptime: %s\n  CPU load: %s%%\n\n", ros_get(result, "=uptime"), ros_get(result, "=cpu-load"));
-	}
-
-	if (result->done) {
-		tasks--;
-	}
 	ros_result_free(result);
 }
 
@@ -79,39 +70,49 @@ int main(int argc, char **argv) {
 
 	if (ros_login(conn, argv[2], argv[3])) {
 		struct timeval timeout;
-		struct ros_sentence *sentence;
-
-		/* Static parameters/words */
-		ros_send_command_cb(conn, handleInterface, "/interface/print", "=stats", NULL);
-		tasks++;
-
-		/* Dynamic amount of parameters/words */
-		sentence = ros_sentence_new();
-		ros_sentence_add(sentence, "/system/resource/print");
-		ros_sentence_add(sentence, "=.proplist=uptime,cpu-load");
-		ros_send_sentence_cb(conn, handleUptime, sentence);
-		ros_sentence_free(sentence);
-		tasks++;
 
 		do_continue = 1;
 		timeout.tv_sec = 1;
 		timeout.tv_usec = 0;
+		struct ros_sentence *sentence;
+		sentence = ros_sentence_new();
 
 		while (do_continue) {
 			int reads;
+			int fdin = fileno(stdin);
 			FD_ZERO(&read_fds);
 			FD_SET(conn->socket, &read_fds);
+			FD_SET(fdin, &read_fds);
 
 			reads = select(conn->socket + 1, &read_fds, NULL, NULL, &timeout);
 			if (reads > 0) {
 				if (FD_ISSET(conn->socket, &read_fds)) {
 					/* handle incoming data with specified callback */
-					ros_runloop_once(conn, NULL);
+					if (ros_runloop_once(conn, NULL) == 0) {
+						/* Disconnected */
+						return 0;
+					}
 				}
-			}
-			if (tasks == 0) {
-				ros_disconnect(conn);
-				return 0;
+				if (FD_ISSET(fdin, &read_fds)) {
+					char data[1024];
+					int len;
+					len = read(fdin, data, 1024);
+					if (len == 1 && data[0] == '\n') {
+						ros_send_sentence_cb(conn, handledata, sentence);
+						ros_sentence_free(sentence);
+						sentence = ros_sentence_new();
+					} else if (len > 0) {
+						data[len-1] = '\0';
+						if (strcmp(data,"!quit") == 0) {
+							return 0;
+						}
+						ros_sentence_add(sentence, data);
+					} else {
+						ros_sentence_free(sentence);
+						ros_disconnect(conn);
+						return 0;
+					}
+				}
 			}
 		}
 

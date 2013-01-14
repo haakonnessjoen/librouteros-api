@@ -25,7 +25,7 @@
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
-#include "librouteros.h"
+#include "../librouteros.h"
 
 struct ros_connection *conn;
 volatile int do_continue = 0;

@@ -24,7 +24,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <string.h>
-#include "librouteros.h"
+#include "../librouteros.h"
 
 struct ros_connection *conn;
 

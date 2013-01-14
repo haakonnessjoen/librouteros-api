@@ -1,6 +1,6 @@
 /*
     librouteros-api - Connect to RouterOS devices using official API protocol
-    Copyright (C) 2012, Håkon Nessjøen <haakon.nessjoen@gmail.com>
+    Copyright (C) 2012-2013, Håkon Nessjøen <haakon.nessjoen@gmail.com>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU Lesser General Public License as published by
@@ -65,7 +65,7 @@ extern "C"
 /* event based functions */
 int ros_send_command(struct ros_connection *conn, char *command, ...);
 void ros_set_type(struct ros_connection *conn, enum ros_type type);
-void ros_runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result));
+int ros_runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result));
 int ros_send_command_cb(struct ros_connection *conn, void (*callback)(struct ros_result *result), char *command, ...);
 int ros_send_sentence_cb(struct ros_connection *conn, void (*callback)(struct ros_result *result), struct ros_sentence *sentence);
 
@@ -73,6 +73,7 @@ int ros_send_sentence_cb(struct ros_connection *conn, void (*callback)(struct ro
 struct ros_result *ros_send_command_wait(struct ros_connection *conn, char *command, ...);
 struct ros_result *ros_read_packet(struct ros_connection *conn);
 int ros_login(struct ros_connection *conn, char *username, char *password);
+int ros_cancel(struct ros_connection *conn, int id);
 
 /* common functions */
 struct ros_connection *ros_connect(char *address, int port);

@@ -1,6 +1,6 @@
 /*
     librouteros-api - Connect to RouterOS devices using official API protocol
-    Copyright (C) 2012, Håkon Nessjøen <haakon.nessjoen@gmail.com>
+    Copyright (C) 2012-2013, Håkon Nessjøen <haakon.nessjoen@gmail.com>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU Lesser General Public License as published by
@@ -38,10 +38,6 @@
 
 
 static int debug = 0;
-
-/* TODO: asyncronous data. Use tags and callbacks to return correct
-	data, using local or external select/event loop
-*/
 
 #ifdef _WIN32
 static int _read (SOCKET socket, char *data, int len) {
@@ -226,7 +222,7 @@ static void ros_handle_events(struct ros_connection *conn, struct ros_result *re
 	}
 }
 
-void ros_runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result)) {
+int ros_runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result)) {
 	/* Make sure the connection/instance is event based */
 	if (conn->type != ROS_EVENT) {
 		fprintf(stderr, "Warning! Connection type was not set to ROS_EVENT. Forcing change.\n");
@@ -249,31 +245,41 @@ void ros_runloop_once(struct ros_connection *conn, void (*callback)(struct ros_r
 		} else if (conn->expected_length == 0) {
 			// Sentence done
 			// call callback
-			if (conn->event_result->sentence->words > 0) {
-				if (strcmp(conn->event_result->sentence->word[0], "!done") == 0) {
-					conn->event_result->done = 1;
+			struct ros_result *res = conn->event_result;
+			if (res->sentence->words > 0) {
+				if (strcmp(res->sentence->word[0], "!done") == 0) {
+					res->done = 1;
 				}
-				if (strcmp(conn->event_result->sentence->word[0], "!re") == 0) {
-					conn->event_result->re = 1;
+				if (strcmp(res->sentence->word[0], "!re") == 0) {
+					res->re = 1;
 				}
-				if (strcmp(conn->event_result->sentence->word[0], "!trap") == 0) {
-					conn->event_result->trap = 1;
+				if (strcmp(res->sentence->word[0], "!trap") == 0) {
+					res->trap = 1;
 				}
-				if (strcmp(conn->event_result->sentence->word[0], "!fatal") == 0) {
-					conn->event_result->fatal = 1;
+				if (strcmp(res->sentence->word[0], "!fatal") == 0) {
+					res->fatal = 1;
+				}
+			}
+			if (debug) {
+				int i;
+				for (i = 0; i < res->sentence->words; ++i) {
+					printf("< %s\n", res->sentence->word[i]);
 				}
 			}
 			if (callback != NULL) {
-				callback(conn->event_result);
+				callback(res);
 			} else {
-				ros_handle_events(conn, conn->event_result);
+				ros_handle_events(conn, res);
 			}
 			conn->event_result = NULL;
 		}
 	} else {
 		int to_read = conn->expected_length - conn->length;
 		int got = _read(conn->socket, conn->buffer + conn->length, to_read);
-			if (got == to_read) {
+		if (got < 0) {
+			return 0;
+		}
+		if (got == to_read) {
 			struct ros_result *res;
 			if (conn->event_result == NULL) {
 				conn->event_result = malloc(sizeof(struct ros_result));
@@ -281,7 +287,7 @@ void ros_runloop_once(struct ros_connection *conn, void (*callback)(struct ros_r
 					fprintf(stderr, "Error allocating memory for event result\n");
 					exit(1);
 				}
-				memset(conn->event_result, 0, sizeof(conn->event_result));
+				memset(conn->event_result, 0, sizeof(struct ros_result));
 				conn->event_result->sentence = ros_sentence_new();
 				conn->event_result->done = 0;
 				conn->event_result->re = 0;
@@ -298,6 +304,7 @@ void ros_runloop_once(struct ros_connection *conn, void (*callback)(struct ros_r
 			conn->length = 0;
 		}
 	}
+	return 1;
 }
 
 struct ros_connection *ros_connect(char *address, int port) {
@@ -433,7 +440,7 @@ struct ros_result *ros_read_packet(struct ros_connection *conn) {
 		exit(1);
 	}
 
-	memset(ret, 0, sizeof(ret));
+	memset(ret, 0, sizeof(struct ros_result));
 	ret->done = 0;
 	ret->re = 0;
 	ret->trap = 0;
@@ -619,9 +626,37 @@ void ros_add_event(struct ros_connection *conn, struct ros_event *event) {
 	memcpy(conn->events[conn->num_events-1], event, sizeof(struct ros_event));
 }
 
-/* TODO: Return id to event instance in connection object. And create ros_cancel() command. */
+/* NB! Blocking call. TODO: Fix */
+int ros_cancel(struct ros_connection *conn, int id) {
+	char iddata[1024];
+	int returnval;
+	struct ros_result *res;
+	int was_event = conn->type == ROS_EVENT;
+	
+	snprintf(iddata, 1024, "=tag=%d", id);
+	if (was_event) {
+		ros_set_type(conn, ROS_SIMPLE);
+	}
+	res = ros_send_command_wait(conn, "/cancel", iddata, NULL);
+	if (was_event) {
+		ros_set_type(conn, ROS_EVENT);
+	}
+	if (res == NULL) {
+		return 0;
+	}
+	if (res->done) {
+		returnval = 1;
+	} else {
+		returnval = 0;
+	}
+	ros_result_free(res);
+	return returnval;
+}
+
+/* Returns .tag id */
 int ros_send_command_cb(struct ros_connection *conn, void (*callback)(struct ros_result *result), char *command, ...) {
 	int result;
+	int id;
 	struct ros_event *event = malloc(sizeof(struct ros_event));
 	char extra[120];
 	va_list ap;
@@ -631,7 +666,8 @@ int ros_send_command_cb(struct ros_connection *conn, void (*callback)(struct ros
 		exit(1);
 	}
 
-	sprintf(event->tag, "%d", rand());
+	id = rand();
+	sprintf(event->tag, "%d", id);
 	sprintf(extra, ".tag=%s", event->tag);
 	event->callback = callback;
 
@@ -642,11 +678,12 @@ int ros_send_command_cb(struct ros_connection *conn, void (*callback)(struct ros
 	result = ros_send_command_va(conn, extra, command, ap);
 	va_end(ap);
 
-	return result;
+	return result > 0 ? id : 0;
 }
 
 int ros_send_sentence_cb(struct ros_connection *conn, void (*callback)(struct ros_result *result), struct ros_sentence *sentence) {
 	int result;
+	int id;
 	struct ros_event *event = malloc(sizeof(struct ros_event));
 	char extra[120];
 
@@ -655,7 +692,8 @@ int ros_send_sentence_cb(struct ros_connection *conn, void (*callback)(struct ro
 		exit(1);
 	}
 
-	sprintf(event->tag, "%d", rand());
+	id = rand();
+	sprintf(event->tag, "%d", id);
 	sprintf(extra, ".tag=%s", event->tag);
 	event->callback = callback;
 
@@ -665,7 +703,7 @@ int ros_send_sentence_cb(struct ros_connection *conn, void (*callback)(struct ro
 	ros_sentence_add(sentence, extra);
 	result = ros_send_sentence(conn, sentence);
 
-	return result;
+	return result > 0 ? id : 0;
 }
 
 

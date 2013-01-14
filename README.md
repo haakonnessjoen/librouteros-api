@@ -24,9 +24,9 @@ This example logs into a router and lists all interfaces available on the remote
 		ros_free_result(res);
 
 ### More examples:
-  * [Example 1](librouteros-api/blob/master/test.c)
-  * [Example 2](librouteros-api/blob/master/test2.c)
-  * [Example 3](librouteros-api/blob/master/test3.c)
+  * [Example 1](librouteros-api/blob/master/examples/test.c)
+  * [Example 2](librouteros-api/blob/master/examples/test2.c)
+  * [Example 3](librouteros-api/blob/master/examples/test3.c)
 
 ### This library is tested and proved working on
   * Linux
@@ -70,6 +70,7 @@ Use the following functions:
   * ros_sentence_add
   * ros_sentence_free
   * ros_send_*_cb
+  * ros_cancel
   * ros_get
   * ros_result_free
   * ros_disconnect
@@ -124,6 +125,16 @@ Server-side problems are reported with ->trap or ->fatal to 1. Problems sending 
 
 **NOTE** The last argument MUST always be NULL.
 
+### int ros_send_command_cb(struct ros_connection *connection, void (*callback)(struct ros_result *result), char *command, ...)
+
+Send a RouterOS API "sentence" and immidiatly return. The first
+argument after the callback identifier is the command. For example "/interface/print". You can have as many "words" (parameters) as you like.
+The callback should be defined as void callback(struct ros_result
+*result). For this callback to be fired, you have to pass NULL to
+the callback parameter in ros_runloop_once().
+
+**NOTE** The last argument MUST always be NULL.
+
 ### struct ros_result *ros_read_packet(struct ros_connection *connection);
 
 If the result was result->re you can use ros_read_packet() to get the next row. Use multiple times until result->done is 1.
@@ -152,7 +163,18 @@ Returns 1 on success and 0 on failure.
 
 Use this to enter "event" mode. (nonblocking sockets) Usage: ros_set_type(conn, ROS_EVENT);
 
+#### int ros_cancel(struct ros_connection *conn, int id);
+
+Use this to cancel a running tag. (You get the id from ros_send_*_cb commands)
+
 #### void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result));
 
-Use select/epoll/poll to check for data on conn->socket. When you know there is data present, run the runloop_once() command with a callback function to handle the result. The callback function should be defined as: void callbackname(struct ros_result *result);
+Use select/epoll/poll to check for data on conn->socket. When you know
+there is data present, run the runloop_once() command with a callback
+function to handle the result. The callback function should be defined
+as: void callbackname(struct ros_result *result);
+If you want the library to handle the callbacks internally, and spawn
+the correct callbacks defined in the ros_send_*_cb functions, you should
+give NULL as the callback parameter here.
+
 Look at test2.c for a select() example.	
