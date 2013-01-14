@@ -74,6 +74,7 @@ Use the following functions:
   * ros_get
   * ros_result_free
   * ros_disconnect
+  * ros_runloop_once
 
 ### Different methods to send commands (sentences)
 
@@ -167,7 +168,7 @@ Use this to enter "event" mode. (nonblocking sockets) Usage: ros_set_type(conn, 
 
 Use this to cancel a running tag. (You get the id from ros_send_*_cb commands)
 
-#### void runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result));
+#### void ros_runloop_once(struct ros_connection *conn, void (*callback)(struct ros_result *result));
 
 Use select/epoll/poll to check for data on conn->socket. When you know
 there is data present, run the runloop_once() command with a callback
