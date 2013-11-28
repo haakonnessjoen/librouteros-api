@@ -1,4 +1,4 @@
-all: test test3 test3 cancel cmd
+all: test test2 test3 cancel cmd
 
 test: test.c ../md5.o ../librouteros.o
 	gcc -Wall -g -o test test.c ../librouteros.o ../md5.o
