@@ -35,6 +35,7 @@ struct ros_result {
 struct ros_event {
 	char tag[100];
 	void (*callback)(struct ros_result *result);
+	char inuse;
 };
 
 enum ros_type {
@@ -52,7 +53,7 @@ struct ros_connection {
 #endif
 	unsigned char *buffer;
 	struct ros_event **events;
-	int num_events;
+	int max_events;
 	struct ros_result *event_result;
 	int expected_length;
 	int length;

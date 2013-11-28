@@ -36,6 +36,7 @@
 #include "md5.h"
 #include "librouteros.h"
 
+static void ros_remove_event(struct ros_connection *conn, int index);
 
 static int debug = 0;
 
@@ -197,7 +198,7 @@ void ros_set_type(struct ros_connection *conn, enum ros_type type) {
 }
 
 static void ros_handle_events(struct ros_connection *conn, struct ros_result *result) {
-	if (conn->num_events > 0) {
+	if (conn->max_events > 0) {
 		int i;
 		char *key = ros_get_tag(result);
 		if (key == NULL) {
@@ -209,8 +210,11 @@ static void ros_handle_events(struct ros_connection *conn, struct ros_result *re
 			fprintf(stderr, "Cannot allocate memory\n");
 			exit(1);
 		}
-		for (i = 0; i < conn->num_events; ++i) {
-			if (strcmp(key, conn->events[i]->tag) == 0) {
+		for (i = 0; i < conn->max_events; ++i) {
+			if (conn->events[i]->inuse && strcmp(key, conn->events[i]->tag) == 0) {
+				if (result->done) {
+					ros_remove_event(conn, i);
+				}
 				conn->events[i]->callback(result);
 				free(key);
 				return;
@@ -333,7 +337,7 @@ struct ros_connection *ros_connect(char *address, int port) {
 	conn->length = 0;
 	conn->event_result = NULL;
 	conn->events = NULL;
-	conn->num_events = 0;
+	conn->max_events = 0;
 
 	conn->socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (conn->socket <= 0) {
@@ -368,9 +372,9 @@ int ros_disconnect(struct ros_connection *conn) {
 	result = close(conn->socket);
 #endif
 
-	if (conn->num_events > 0) {
+	if (conn->max_events > 0) {
 		int i;
-		for (i = 0; i < conn->num_events; ++i) {
+		for (i = 0; i < conn->max_events; ++i) {
 			free(conn->events[i]);
 			conn->events[i] = NULL;
 		}
@@ -608,22 +612,47 @@ static int ros_send_command_va(struct ros_connection *conn, char *extra, char *c
 }
 
 void ros_add_event(struct ros_connection *conn, struct ros_event *event) {
+	int idx = 0;
+	char isnew = 0;
+
 	if (conn->events == NULL) {
-		conn->num_events = 1;
+		conn->max_events = 1;
 		conn->events = malloc(sizeof(struct ros_event **));
+		idx = 0;
+		isnew = 1;
 	} else {
-		conn->num_events++;
-		conn->events = realloc(conn->events, sizeof(struct ros_event *) * conn->num_events);
+		int i;
+		idx = -1;
+		for (i = 0; i < conn->max_events; ++i) {
+			if (conn->events[i]->inuse == 0) {
+				idx = i;
+				break;
+			}
+		}
+		if (idx == -1) {
+			isnew = 1;
+			idx = conn->max_events++;
+			conn->events = realloc(conn->events, sizeof(struct ros_event **) * conn->max_events);
+			if (conn->events == NULL) {
+				fprintf(stderr, "Error allocating memory\n");
+				exit(1);
+			}
+		}
 	}
-	if (conn->events == NULL) {
-		fprintf(stderr, "Error allocating memory\n");
-		exit(1);
+	if (isnew) {
+		conn->events[idx] = malloc(sizeof(struct ros_event));
+		if (conn->events[idx] == NULL) {
+			fprintf(stderr, "Error allocating memory\n");
+		}
 	}
-	conn->events[conn->num_events-1] = malloc(sizeof(struct ros_event));
-	if (conn->events[conn->num_events-1] == NULL) {
-		fprintf(stderr, "Error allocating memory\n");
+	memcpy(conn->events[idx], event, sizeof(struct ros_event));
+	conn->events[idx]->inuse = 1;
+}
+
+static void ros_remove_event(struct ros_connection *conn, int index) {
+	if (index < conn->max_events) {
+		conn->events[index]->inuse = 0;
 	}
-	memcpy(conn->events[conn->num_events-1], event, sizeof(struct ros_event));
 }
 
 /* NB! Blocking call. TODO: Fix */
