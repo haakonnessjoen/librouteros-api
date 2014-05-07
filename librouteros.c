@@ -42,6 +42,14 @@ static int debug = 0;
 
 #ifdef _WIN32
 #define snprintf _snprintf
+static int is_connected (SOCKET socket) {
+	char data;
+	int len = recv(socket, &data, 1, MSG_PEEK);
+	if (len < 0) {
+		return WSAGetLastError() == WSAEWOULDBLOCK ? 1 : 0;
+	}
+	return len > 0 ? 1 : 0;
+}
 static int _read (SOCKET socket, char *data, int len) {
 	int rlen = recv(socket, data, len, 0);
 	if (rlen == SOCKET_ERROR) return -1;
@@ -53,6 +61,14 @@ static int _write(SOCKET socket, char *data, int len) {
 	return wlen;
 }
 #else
+static int is_connected (int socket) {
+	char data;
+	int len = recv(socket, &data, 1, MSG_PEEK);
+	if (len < 0) {
+		return errno == EWOULDBLOCK ? 1 : 0;
+	}
+	return len > 0 ? 1 : 0;
+}
 #define _read(s,d,l) read(s,d,l)
 #define _write(s,d,l) write(s,d,l)
 #endif
@@ -232,6 +248,10 @@ int ros_runloop_once(struct ros_connection *conn, void (*callback)(struct ros_re
 	if (conn->type != ROS_EVENT) {
 		fprintf(stderr, "Warning! Connection type was not set to ROS_EVENT. Forcing change.\n");
 		ros_set_type(conn, ROS_EVENT);
+	}
+
+	if (!is_connected(conn->socket)) {
+		return 0;
 	}
 
 	if (conn->expected_length == 0) {
