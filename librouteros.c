@@ -342,6 +342,9 @@ struct ros_connection *ros_connect(char *address, int port) {
 
 	conn->socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (conn->socket <= 0) {
+#ifdef _WIN32
+		WSACleanup();
+#endif
 		free(conn);
 		return NULL;
 	}
@@ -358,6 +361,9 @@ struct ros_connection *ros_connect(char *address, int port) {
 		-1
 #endif
 	) {
+#ifdef _WIN32
+		WSACleanup();
+#endif
 		free(conn);
 		return NULL;
 	}
@@ -385,6 +391,9 @@ int ros_disconnect(struct ros_connection *conn) {
 		conn->events = NULL;
 	}
 	free(conn);
+#ifdef _WIN32
+	WSACleanup();
+#endif
 
 	return result;
 }
