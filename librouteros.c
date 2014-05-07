@@ -327,10 +327,11 @@ struct ros_connection *ros_connect(char *address, int port) {
 
 #ifdef _WIN32
 	if ((retval = WSAStartup(0x202, &wsaData)) != 0) {
-        fprintf(stderr,"Server: WSAStartup() failed with error %d\n", retval);
-        WSACleanup();
-        return NULL;
-    }
+		fprintf(stderr,"Server: WSAStartup() failed with error %d\n", retval);
+		WSACleanup();
+		free(conn);
+		return NULL;
+	}
 #endif
 
 	conn->expected_length = 0;
@@ -341,6 +342,7 @@ struct ros_connection *ros_connect(char *address, int port) {
 
 	conn->socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (conn->socket <= 0) {
+		free(conn);
 		return NULL;
 	}
 
@@ -356,6 +358,7 @@ struct ros_connection *ros_connect(char *address, int port) {
 		-1
 #endif
 	) {
+		free(conn);
 		return NULL;
 	}
 
@@ -809,9 +812,13 @@ int ros_login(struct ros_connection *conn, char *username, char *password) {
 
 	free(userWord);
 
-	// !done == successful login
-	result = res->done;
-	ros_result_free(res);
+	// '!done' flag == successful login
+	if (res != NULL) {
+		result = res->done;
+		ros_result_free(res);
+	} else {
+		result = 0;
+	}
 
 	return result;
 }
