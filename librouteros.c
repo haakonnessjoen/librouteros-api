@@ -41,6 +41,7 @@ static void ros_remove_event(struct ros_connection *conn, int index);
 static int debug = 0;
 
 #ifdef _WIN32
+#define snprintf _snprintf
 static int _read (SOCKET socket, char *data, int len) {
 	int rlen = recv(socket, data, len, 0);
 	if (rlen == SOCKET_ERROR) return -1;
