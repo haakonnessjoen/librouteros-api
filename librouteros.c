@@ -349,7 +349,6 @@ struct ros_connection *ros_connect(char *address, int port) {
 #ifdef _WIN32
 	if ((retval = WSAStartup(0x202, &wsaData)) != 0) {
 		fprintf(stderr,"Server: WSAStartup() failed with error %d\n", retval);
-		WSACleanup();
 		free(conn);
 		return NULL;
 	}
@@ -383,7 +382,10 @@ struct ros_connection *ros_connect(char *address, int port) {
 #endif
 	) {
 #ifdef _WIN32
+		closesocket(conn->socket);
 		WSACleanup();
+#else
+		close(conn->socket);
 #endif
 		free(conn);
 		return NULL;
